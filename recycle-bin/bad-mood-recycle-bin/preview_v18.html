@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>粒子残核 · 规则电弧版</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --panel2:#1c2129; --line:#2a303a;
+    --txt:#e8ecf2; --dim:#9aa4b2; --gold:#ffc46e; --mint:#7fe9cf;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 700px at 50% -10%,#1b2130,#0f1115 60%);
+       color:var(--txt);font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       padding:32px 20px 64px}
+  .wrap{max-width:980px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:.5px}
+  h1 span{color:var(--gold)}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:26px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+        border-radius:16px;padding:22px;margin-bottom:20px}
+  .card h2{font-size:14px;margin:0 0 16px;color:var(--dim);font-weight:600;letter-spacing:.6px;text-transform:uppercase}
+
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:22px;align-items:center}
+  @media(max-width:760px){.stage{grid-template-columns:1fr}}
+  .showcase{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;
+            display:grid;place-items:center;transition:background .25s}
+  .showcase img{width:74%;filter:drop-shadow(0 18px 40px rgba(0,0,0,.45));transition:transform .4s}
+  .showcase.zoom img{transform:scale(1.5)}
+  .bd-dark{background:radial-gradient(circle at 50% 45%,#2a2130,#0b0c10 72%)}
+  .bd-white{background:#ffffff}
+  .bd-cream{background:#f7f0e6}
+  .bd-check{background:
+      linear-gradient(45deg,#c9ccd1 25%,transparent 25%,transparent 75%,#c9ccd1 75%),
+      linear-gradient(45deg,#c9ccd1 25%,#e7e9ec 25%,#e7e9ec 75%,#c9ccd1 75%);
+      background-size:22px 22px;background-position:0 0,11px 11px}
+  .bd-app{background:
+      radial-gradient(120% 90% at 50% 40%,rgba(40,32,48,.55),rgba(8,9,12,.92) 70%),
+      linear-gradient(160deg,#181420,#0a0b0e)}
+
+  .ctl label{display:block;font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.5px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .chip{border:1px solid var(--line);background:#12161d;color:var(--txt);border-radius:999px;
+        padding:6px 13px;font-size:12.5px;cursor:pointer;transition:.18s}
+  .chip:hover{border-color:#3a4350}
+  .chip.on{background:rgba(255,196,110,.14);border-color:var(--gold);color:var(--gold)}
+
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .m{background:#12161d;border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+  .m b{display:block;font-size:19px;color:var(--gold);font-weight:650;line-height:1.2}
+  .m i{font-style:normal;font-size:11px;color:var(--dim)}
+
+  .row{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap}
+  .sz{text-align:center}
+  .sz img{display:block;margin:0 auto 8px;filter:drop-shadow(0 8px 18px rgba(0,0,0,.5))}
+  .sz span{font-size:11px;color:var(--dim)}
+  .bgcell{border-radius:10px;padding:6px;background:radial-gradient(circle at 50% 45%,#2a2130,#0b0c10 72%)}
+
+  .det{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:700px){.det{grid-template-columns:1fr}}
+  .d{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0b0c10}
+  .d .cap{padding:8px 11px;font-size:12px;color:var(--dim);border-top:1px solid var(--line)}
+  .d canvas{display:block;width:100%;height:auto}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:12px}
+  td b{color:var(--gold)}
+  tr.no td{color:var(--dim)}
+  .note{font-size:13px;color:var(--dim);margin:0}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;
+       background:rgba(127,233,207,.12);color:var(--mint);border:1px solid rgba(127,233,207,.35);margin-left:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>粒子残核 · <span>规则电弧</span> 版 <span class="tag">v5 · 规整</span></h1>
+  <p class="sub">电弧改为确定性几何：统一倾角椭圆轨道 + 三折对称（方位 0°/120°/240°）+ 统一粗细、无随机抖动与尖峰。仍是 3 道立体弧，前段亮、绕到背后变暗并被玻璃遮挡，立体感保留，但不再杂乱。</p>
+
+  <div class="card">
+    <h2>成品预览 · 切换底色验证</h2>
+    <div class="stage">
+      <div id="sc" class="showcase bd-app">
+        <img id="badge" src="images/badge_particle_remnant_3d.png" alt="粒子残核">
+      </div>
+      <div class="ctl">
+        <label>背景</label>
+        <div class="chips" id="bgs">
+          <button class="chip on" data-b="bd-app">弹窗遮罩</button>
+          <button class="chip" data-b="bd-dark">深底</button>
+          <button class="chip" data-b="bd-cream">暖底</button>
+          <button class="chip" data-b="bd-white">白底</button>
+          <button class="chip" data-b="bd-check">棋盘（验透明）</button>
+        </div>
+        <label>显示</label>
+        <div class="chips">
+          <button class="chip" id="zin">放大看细节</button>
+        </div>
+        <label>本版指标</label>
+        <div class="metrics">
+          <div class="m"><b>3</b><i>电弧（前3/后3段）</i></div>
+          <div class="m"><b>0</b><i>随机抖动/尖峰</i></div>
+          <div class="m"><b>120°</b><i>三折对称间隔</i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>多尺寸自检</h2>
+    <div class="row" id="sizes"></div>
+  </div>
+
+  <div class="card">
+    <h2>细节放大 · 立体感来源</h2>
+    <div class="det" id="dets"></div>
+    <p class="note" style="margin-top:14px">四要素不变：① 圆柱截面明暗（中心白热芯 → 琥珀管身 → 边缘收暗）② 暗金描边把亮管从亮玻璃上剥离 ③ 按深度亮度（正面亮、绕到背后变暗）④ 前弧在玻璃上投接触阴影。区别在几何本身：现在是平滑规则椭圆，不再是随机锯齿闪电。</p>
+  </div>
+
+  <div class="card">
+    <h2>本版参数（规则版）</h2>
+    <table>
+      <tr><th>项</th><th>数值</th><th>说明</th></tr>
+      <tr><td>电弧数量</td><td><b>3</b></td><td>内/外/外，三折对称</td></tr>
+      <tr><td>轨道倾角</td><td><b>统一 50°</b></td><td>所有弧同一倾角的椭圆，读感一致</td></tr>
+      <tr><td>方位角</td><td><b>0° / 120° / 240°</b></td><td>绕视轴对称排布，三折规整</td></tr>
+      <tr><td>轨道半径</td><td><b>0.92 / 1.08 / 1.20 × rcore</b></td><td>内弧掠面、外弧环绕</td></tr>
+      <tr><td>弧段跨度</td><td>215°（三条一致）</td><td>统一长弧，读作环绕</td></tr>
+      <tr><td>管身宽度</td><td>5.4 / 4.0 px（前/后）</td><td>统一系数 sw=1.0，无随机脉动</td></tr>
+      <tr class="no"><td>随机抖动 / 尖峰 / 分叉</td><td>已移除</td><td>上一版"乱"的根源，本版剔除</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+const bgs = document.getElementById('bgs');
+const sc = document.getElementById('sc');
+bgs.addEventListener('click', e=>{
+  const b = e.target.closest('.chip'); if(!b) return;
+  [...bgs.children].forEach(c=>c.classList.toggle('on', c===b));
+  sc.className = 'showcase ' + b.dataset.b + (sc.classList.contains('zoom')?' zoom':'');
+});
+const zin = document.getElementById('zin');
+zin.addEventListener('click', ()=>{
+  const on = sc.classList.toggle('zoom');
+  zin.classList.toggle('on', on);
+  zin.textContent = on ? '还原' : '放大看细节';
+});
+
+const sizes=[128,96,64,48,32];
+const row=document.getElementById('sizes');
+sizes.forEach(s=>{
+  const d=document.createElement('div'); d.className='sz';
+  const cell=document.createElement('div'); cell.className='bgcell';
+  const img=document.createElement('img'); img.src='images/badge_particle_remnant_3d.png';
+  img.width=s; img.height=s;
+  cell.appendChild(img); d.appendChild(cell);
+  const t=document.createElement('span'); t.textContent=s+' px'; d.appendChild(t);
+  row.appendChild(d);
+});
+
+const SRC='images/badge_particle_remnant_3d.png';
+const regions=[
+  {x:.62,y:.28,w:.30,h:.30,cap:'外弧管身截面 · 白热芯 + 琥珀边'},
+  {x:.05,y:.68,w:.30,h:.30,cap:'弧末端收针 + 暗金描边'},
+  {x:.30,y:.10,w:.40,h:.34,cap:'内弧掠过玻璃正面 · 接触阴影'}
+];
+const det=document.getElementById('dets');
+const src=new Image(); src.src=SRC;
+src.onload=()=>{
+  regions.forEach(r=>{
+    const W=420,H=Math.round(420*(r.h/src.height)/(r.w/src.width));
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=Math.round(W*r.h/r.w);
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle='#0b0c10'; ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.drawImage(src, r.x*src.width, r.y*src.height, r.w*src.width, r.h*src.height, 0,0,cv.width,cv.height);
+    const box=document.createElement('div'); box.className='d';
+    box.appendChild(cv);
+    const cap=document.createElement('div'); cap.className='cap'; cap.textContent=r.cap;
+    box.appendChild(cap); det.appendChild(box);
+  });
+};
+</script>
+</body>
+</html>

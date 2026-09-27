@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>坏情绪回收站 · v20 首页交互时序（暗色科幻）</title>
+<style>
+  :root{
+    --gold:#ffcf7d; --gold2:#ff9d4d; --green:#7fd4a6; --bg:#0c0805;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:#05070a;color:#eee;
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;}
+
+  /* 阶段指示器 */
+  .phases{display:flex;gap:8px;font-size:13px;color:#9fb0c0;}
+  .phases b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;
+    background:#11202e;border:1px solid #2c4a5e;color:#7fb0c8;font-weight:700;}
+  .phases b.on{background:linear-gradient(135deg,var(--green),#39c79a);color:#04140e;border-color:transparent;
+    box-shadow:0 0 14px rgba(127,212,166,.6);}
+  .phases span{display:flex;align-items:center;gap:6px;opacity:.5;}
+  .phases span.on{opacity:1;color:#cfe;}
+
+  /* 手机框 */
+  .phone{position:relative;width:min(360px,92vw);aspect-ratio:9/16;border-radius:34px;overflow:hidden;
+    background:#000;box-shadow:0 24px 70px rgba(0,0,0,.7),0 0 0 2px #1c2530;isolation:isolate;}
+
+  /* 背景：全程静止，绝不做任何 transform/opacity 动画 */
+  .bg{position:absolute;inset:0;background-size:cover;background-position:center;z-index:1;}
+  .overlay{position:absolute;inset:0;z-index:2;pointer-events:none;
+    background:radial-gradient(ellipse 65% 55% at 50% 60%,transparent 42%,rgba(0,0,0,.32) 100%);}
+  /* 静态参照物：证明背景没动（固定在屏幕上，不随机器人变化） */
+  .ref-mark{position:absolute;left:14px;top:14px;z-index:3;font-size:11px;color:#dfe;opacity:.45;
+    border:1px solid rgba(255,255,255,.18);padding:3px 7px;border-radius:8px;pointer-events:none;}
+
+  /* 机器人舞台：固定屏幕中心，全程不位移 */
+  .stage{position:absolute;left:50%;bottom:28%;width:58%;aspect-ratio:1/1;transform:translateX(-50%);
+    z-index:4;will-change:transform;}
+  .robot{position:absolute;inset:0;width:100%;height:100%;display:block;
+    filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));transform-origin:50% 80%;}
+
+  /* ① 入场：从下方浮入中心（仅机器人位移） */
+  .robot.entering{animation:novaEnter 1.05s cubic-bezier(.16,.84,.28,1) both;}
+  @keyframes novaEnter{
+    0%{opacity:0;transform:translate3d(0,46vh,0) scale(.94);}
+    18%{opacity:1;}
+    72%{transform:translate3d(0,-1.2vh,0) scale(1.005);}
+    100%{opacity:1;transform:translate3d(0,0,0) scale(1);}
+  }
+  /* 待机呼吸：仅缩放，不位移 */
+  .robot.idle{animation:breath 3.2s ease-in-out infinite;}
+  @keyframes breath{0%,100%{transform:scale(1);}50%{transform:scale(1.015);}}
+  /* ③ 抖动：仅机器人本体，背景静止 */
+  .robot.shaking{animation:shake .55s cubic-bezier(.36,.07,.19,.97) both !important;}
+  @keyframes shake{
+    0%{transform:translate3d(0,0,0) rotate(0);}
+    15%{transform:translate3d(-4%,0,0) rotate(-2deg);}
+    30%{transform:translate3d(4%,0,0) rotate(2deg);}
+    45%{transform:translate3d(-3%,0,0) rotate(-1.5deg);}
+    60%{transform:translate3d(3%,0,0) rotate(1.5deg);}
+    75%{transform:translate3d(-2%,0,0) rotate(-1deg);}
+    100%{transform:translate3d(0,0,0) rotate(0);}
+  }
+
+  /* 询问气泡 */
+  .ask{position:absolute;left:50%;bottom:104%;transform:translateX(-50%) translateY(8%) scale(.92);
+    width:78%;padding:12px 14px;background:linear-gradient(180deg,#fffdf6,#fff4dd);border:2px solid rgba(255,200,120,.85);
+    border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35);color:#5a4632;font-weight:700;font-size:15px;text-align:center;
+    opacity:0;visibility:hidden;transition:opacity .3s,transform .32s cubic-bezier(.34,1.56,.64,1),visibility .3s;z-index:12;}
+  .ask.show{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0) scale(1);}
+  .ask:after{content:"";position:absolute;left:50%;bottom:-12px;transform:translateX(-50%);
+    border-left:10px solid transparent;border-right:10px solid transparent;border-top:12px solid #fff4dd;}
+
+  /* 能量气泡（飘散 + 可收集） */
+  .bubble{position:absolute;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:16px;
+    background:radial-gradient(circle at 35% 35%,#e4ffd6,#78e084 55%,#3caa50);
+    box-shadow:0 0 16px rgba(120,224,150,.7);filter:drop-shadow(0 0 8px rgba(120,224,150,.6));
+    cursor:pointer;z-index:11;animation:floatUp 6s ease-in-out forwards;}
+  .bubble.collecting{animation:toChest .48s cubic-bezier(.5,0,.7,1) forwards !important;}
+  @keyframes floatUp{
+    0%{opacity:0;transform:translate3d(0,-10px,0) scale(.5);}
+    12%{opacity:1;transform:translate3d(0,0,0) scale(1);}
+    50%{opacity:1;transform:translate3d(0,-16px,0) scale(1.05);}
+    84%{opacity:1;transform:translate3d(0,6px,0) scale(1);}
+    100%{opacity:0;transform:translate3d(0,34px,0) scale(.7);}
+  }
+  @keyframes toChest{0%{opacity:1;transform:translate3d(0,0,0) scale(1);}
+    100%{opacity:0;transform:translate3d(0,60vh,0) scale(.2);}}
+
+  /* 回收成功大字 */
+  .reward{position:absolute;left:50%;bottom:108%;transform:translateX(-50%);width:80%;
+    padding:14px 16px;box-sizing:border-box;text-align:center;border-radius:16px;z-index:14;pointer-events:none;
+    background:linear-gradient(180deg,rgba(22,44,32,.94),rgba(12,28,20,.96));border:3px solid rgba(120,230,160,.5);
+    box-shadow:0 14px 44px rgba(0,0,0,.5),0 0 26px rgba(120,230,160,.3);
+    animation:pop .42s cubic-bezier(.34,1.56,.64,1) both;}
+  .reward .ic{font-size:34px;}
+  .reward .tt{font-size:24px;font-weight:800;color:#eafff1;}
+  .reward .ds{font-size:18px;font-weight:700;color:#8df0b4;margin-top:4px;}
+  .reward .en{font-size:15px;font-weight:700;color:#ffd089;margin-top:6px;}
+  @keyframes pop{0%{opacity:0;transform:translateX(-50%) translateY(14px) scale(.84);}
+    100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
+
+  /* 开机点击提示：移到机器人头顶上方（stage 内 bottom:104%），向下小尾巴指向机器人，不再遮挡本体 */
+  .hint{position:absolute;left:50%;bottom:104%;transform:translateX(-50%);
+    color:#fff4d8;font-size:18px;font-weight:900;padding:9px 16px;border-radius:999px;
+    background:rgba(15,10,5,.88);border:2px solid rgba(255,205,130,.7);white-space:nowrap;
+    animation:hintPulse 2.2s ease-in-out infinite;pointer-events:none;z-index:13;}
+  .hint:after{content:"";position:absolute;left:50%;bottom:-12px;transform:translateX(-50%);
+    border-left:9px solid transparent;border-right:9px solid transparent;border-top:12px solid rgba(15,10,5,.88);}
+  @keyframes hintPulse{0%,100%{opacity:.65;}50%{opacity:1;transform:translateX(-50%) translateY(-6px);}}
+
+  /* 顶部/底部文案 */
+  .top{position:absolute;top:14px;left:0;right:0;text-align:center;z-index:20;pointer-events:none;}
+  .top .en{font-size:13px;letter-spacing:3px;color:#f0e4c9;font-weight:700;}
+  .top .zh{font-size:11px;color:#c5b89a;margin-top:2px;}
+
+  /* 宝箱 HUD */
+  .chest{position:absolute;right:5%;bottom:8%;z-index:50;width:84px;height:84px;display:flex;align-items:center;justify-content:center;}
+  .chest img{width:76px;height:76px;display:block;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));}
+  .chest .cnt{position:absolute;top:-2px;right:-2px;min-width:26px;height:26px;line-height:26px;padding:0 6px;
+    text-align:center;font-size:13px;font-weight:800;color:#fff;border-radius:999px;
+    background:linear-gradient(180deg,var(--gold),var(--gold2));border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45);}
+
+  /* 录入面板 */
+  .panel{position:absolute;left:0;right:0;bottom:0;padding:18px 20px 26px;border-radius:24px 24px 0 0;
+    background:linear-gradient(180deg,#2a2b2c,#1f2021);border-top:2px solid rgba(205,175,130,.22);
+    box-shadow:0 -16px 50px rgba(0,0,0,.5);transform:translateY(100%);transition:transform .38s cubic-bezier(.22,.9,.3,1);z-index:60;}
+  .panel.show{transform:translateY(0);}
+  .panel .q{font-size:15px;color:#e2c9a6;font-weight:600;margin-bottom:12px;}
+  .panel input{width:100%;height:46px;font-size:15px;color:#e8e6e0;background:#17181a;border-radius:12px;
+    border:1px solid rgba(255,255,255,.06);padding:0 14px;outline:none;}
+  .panel .ok{margin-top:14px;width:100%;height:50px;border:none;border-radius:25px;font-size:16px;font-weight:700;
+    background:linear-gradient(135deg,#e3b87f,#c99a5f);color:#2a2016;}
+  .panel .ok:disabled{opacity:.45;}
+
+  /* 控制条 */
+  .ctrls{display:flex;gap:10px;}
+  .ctrls button{font-size:13px;padding:8px 16px;border:none;border-radius:10px;cursor:pointer;
+    background:#15324a;color:#cfe;font-weight:700;border:1px solid #2c4a5e;}
+  .ctrls button.primary{background:linear-gradient(135deg,#8ff3df,#43d9b8);color:#04140e;border:none;}
+  .tip{font-size:12px;color:#7f93a3;max-width:360px;text-align:center;line-height:1.6;}
+  .tip b{color:var(--green);}
+</style>
+</head>
+<body>
+  <div class="phases" id="phases">
+    <span data-p="1"><b id="b1">1</b> 加载浮入</span>
+    <span data-p="2"><b id="b2">2</b> 点击倾听</span>
+    <span data-p="3"><b id="b3">3</b> 抖动回收</span>
+    <span data-p="4"><b id="b4">4</b> 比心掉落</span>
+  </div>
+
+  <div class="phone">
+    <div class="bg" id="bg"></div>
+    <div class="overlay"></div>
+    <div class="ref-mark">背景静止参照 · 固定不动</div>
+
+    <div class="top">
+      <div class="en">LIGHT UP YOUR MOOD</div>
+      <div class="zh">点亮情绪 · 点亮心情</div>
+    </div>
+
+    <div class="stage" id="stage">
+      <img class="robot entering idle" id="robot" src="images/robot_idle.png" alt="Nova" />
+      <div class="ask" id="ask">今天有什么要回收的吗？</div>
+      <div class="reward" id="reward" style="display:none"></div>
+      <div class="hint" id="hint" style="display:none">点击 Nova，回收 emo</div>
+    </div>
+
+    <div class="chest">
+      <img src="images/宝箱.png" alt="宝箱" />
+      <div class="cnt" id="cnt">0</div>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="q">把坏心情交给 Nova 就好～</div>
+      <input id="inp" placeholder="写下或说出你的坏心情……" maxlength="80" />
+      <button class="ok" id="ok" disabled>确认回收</button>
+    </div>
+  </div>
+
+  <div class="ctrls">
+    <button class="primary" id="replay">↻ 重新演示</button>
+    <button id="autodemo">▶ 自动走一遍</button>
+  </div>
+  <div class="tip">
+    背景图与"背景静止参照"框 <b>全程零动画</b>。机器人只在 ① 入场浮入 / ③ 本体抖动 时动，
+    ③ 抖动时图片仍为「认真倾听」(图2)，④ 抖动结束切到「比心」(图3) 并飘出能量气泡 + 藏品掉落；
+    <b>比心(图3) 一直保持到能量气泡全部收集/淡出后，才回到待机「图1」</b>。
+  </div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const robot = $('robot'), stage = $('stage'), ask = $('ask'), hint = $('hint'),
+        panel = $('panel'), inp = $('inp'), ok = $('ok'), reward = $('reward'), cnt = $('cnt');
+
+  let state = 'idle';      // idle | listen | shaking | heart
+  let submitting = false;
+  let energy = 0;
+  let timers = [];
+  let gen = 0;             // 代际守卫：replay 后作废上一轮未触发的气泡回调
+  const clearT = () => { timers.forEach(clearTimeout); timers = []; };
+  const T = (ms, fn) => timers.push(setTimeout(fn, ms));
+
+  function setPhase(n){
+    for(let i=1;i<=4;i++){
+      $('b'+i).classList.toggle('on', i<=n);
+      document.querySelector('.phases span[data-p="'+i+'"]').classList.toggle('on', i<=n);
+    }
+  }
+
+  function showHint(v){ hint.style.display = v ? 'block' : 'none'; }
+
+  function spawnBubbles(onAllGone){
+    const types=['✦','❀','♡','☁'], vals=[5,10,10,15];
+    const n = 1 + Math.floor(Math.random()*3);
+    let alive = n;
+    const myGen = gen;
+    const kill = (b) => {
+      if(b._done) return; b._done = true;
+      b.remove();
+      alive--;
+      if(alive<=0 && myGen===gen && onAllGone) onAllGone();
+    };
+    for(let i=0;i<n;i++){
+      const b = document.createElement('div');
+      b.className='bubble';
+      const v = vals[Math.floor(Math.random()*vals.length)];
+      b.textContent = v;
+      const ang = Math.random()*Math.PI*2;
+      const R = 34 + Math.random()*8;
+      const x = 50 + R*Math.cos(ang);
+      const y = 63 + R*0.62*Math.sin(ang);
+      b.style.left = x+'%'; b.style.top = y+'%';
+      b.style.animationDelay = (i*0.35)+'s';
+      b.onclick = () => {
+        if(b._done) return;
+        b.classList.add('collecting');
+        energy += v; cnt.textContent = energy;
+        setTimeout(()=>kill(b), 480);
+      };
+      stage.appendChild(b);
+      setTimeout(()=>kill(b), 7000);   // 未收集则 7s 后淡出清理
+    }
+  }
+
+  function showReward(){
+    const pool=[
+      {ic:'🌱',tt:'回收成功',ds:'坏情绪已回收，继续向前走'},
+      {ic:'🌿',tt:'轻松一点',ds:'把沉重交给 Nova，你值得松口气'},
+      {ic:'✨',tt:'已收好',ds:'这一份情绪，已安全封存'},
+      {ic:'💚',tt:'温柔待己',ds:'愿意倾诉，就已经很勇敢了'}
+    ];
+    const r = pool[Math.floor(Math.random()*pool.length)];
+    reward.innerHTML = '<div class="ic">'+r.ic+'</div><div class="tt">'+r.tt+'</div>'+
+                       '<div class="ds">'+r.ds+'</div><div class="en">+20 情绪养分已收集</div>';
+    reward.style.display='block';
+    setTimeout(()=>reward.style.display='none', 3000);
+  }
+
+  function reset(){
+    clearT();
+    gen++;                 // 作废上一轮所有尚未触发的气泡回调
+    submitting=false; state='idle';
+    robot.className='robot idle'; robot.src='images/robot_idle.png';
+    ask.classList.remove('show'); panel.classList.remove('show');
+    showHint(false); reward.style.display='none';
+    stage.querySelectorAll('.bubble').forEach(b=>b.remove());   // 清掉残留能量气泡
+    setPhase(0);
+  }
+
+  // ① 入场
+  function enter(){
+    reset();
+    setPhase(1);
+    robot.className='robot entering idle';
+    robot.src='images/robot_idle.png';
+    setTimeout(()=>{
+      robot.className='robot idle';      // 入场结束，进入待机呼吸
+      showHint(true);
+      setPhase(1);
+    }, 1050);
+  }
+
+  // ② 点击机器人
+  function tapRobot(){
+    if(submitting || state!=='idle') return;
+    state='listen';
+    setPhase(2);
+    showHint(false);
+    robot.src='images/robot_listen.png';
+    ask.classList.add('show');
+    T(450, ()=>{ panel.classList.add('show'); ok.disabled = !inp.value.trim(); });
+  }
+
+  // ③ → ④ 提交回收
+  function submit(){
+    if(submitting) return;
+    const text = inp.value.trim();
+    if(!text){ inp.focus(); return; }
+    submitting=true;
+    setPhase(3);
+    panel.classList.remove('show'); ask.classList.remove('show');
+    inp.value=''; ok.disabled=true;
+
+    setTimeout(()=>{            // 等面板收起
+      // ③ 保留图2，仅机器人抖动（背景静止）
+      state='shaking';
+      robot.className='robot shaking';
+      robot.src='images/robot_listen.png';
+
+      setTimeout(()=>{          // 抖动结束
+        // ④ 切图3 比心 + 能量气泡 + 藏品掉落
+        //   机器人保持「比心」(图3)，直到能量气泡全部被收集或淡出，才回到待机「图1」
+        setPhase(4);
+        state='heart';
+        robot.className='robot';
+        robot.src='images/robot_heart.png';
+        energy += 20; cnt.textContent = energy;
+        showReward();
+        spawnBubbles(()=>{
+          state='idle';
+          robot.className='robot idle';
+          robot.src='images/robot_idle.png';
+          showHint(true);
+          setPhase(1);
+          submitting=false;
+        });
+      }, 550);
+    }, 320);
+  }
+
+  // 事件
+  robot.addEventListener('click', tapRobot);
+  inp.addEventListener('input', ()=> ok.disabled = !inp.value.trim());
+  ok.addEventListener('click', submit);
+  $('replay').addEventListener('click', enter);
+  $('autodemo').addEventListener('click', ()=>{
+    enter();
+    setTimeout(()=>{ tapRobot(); setTimeout(()=>{ inp.value='今天开会好累……'; ok.disabled=false; submit(); }, 700); }, 1300);
+  });
+
+  enter();
+})();
+</script>
+</body>
+</html>

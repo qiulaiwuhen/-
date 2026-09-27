@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>粒子残核 · 3D 立体电弧徽章</title>
+<style>
+  :root{
+    --bg:#141018; --panel:#1e1a26; --line:#332c40;
+    --ink:#f2eef8; --ink2:#b9aecb; --gold:#ffcf86; --gold2:#ffe9c2;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:36px 22px 64px;
+    background:radial-gradient(1200px 600px at 50% -10%,#2a2135,#141018 60%);
+    color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+  h1{margin:0 0 6px; font-size:23px; letter-spacing:.4px}
+  h1 span{color:var(--gold)}
+  .sub{color:var(--ink2); font-size:13px; margin-bottom:26px}
+  .wrap{max-width:1000px; margin:0 auto}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; margin-bottom:20px}
+  .card h2{margin:0 0 14px; font-size:14px; font-weight:600; color:var(--gold2); letter-spacing:.6px}
+  .label{font-size:12px; color:var(--ink2); margin-bottom:8px}
+
+  .stage{
+    display:grid; place-items:center; border-radius:14px; min-height:420px; padding:26px;
+    transition:background .25s;
+  }
+  .stage img{width:min(380px,72vw); height:auto; display:block; filter:drop-shadow(0 22px 42px rgba(0,0,0,.45))}
+  /* backdrops */
+  .bd-popup{background:
+      radial-gradient(600px 380px at 50% 45%, rgba(255,205,140,.14), transparent 70%),
+      rgba(5,8,12,.92);}
+  .bd-white{background:#ffffff}
+  .bd-cream{background:#f7f0e6}
+  .bd-slate{background:#22303a}
+  .bd-check{background:
+      conic-gradient(#3a3446 0 25%, #262130 0 50%, #3a3446 0 75%, #262130 0) 0 0/26px 26px}
+
+  .tabs{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px}
+  .tabs button{
+    background:#2a2336; color:var(--ink2); border:1px solid var(--line);
+    padding:7px 13px; border-radius:9px; font-size:12.5px; cursor:pointer; transition:.18s;
+  }
+  .tabs button:hover{color:var(--ink)}
+  .tabs button.on{background:linear-gradient(180deg,#4a3a22,#33281a); color:var(--gold); border-color:#6b5330}
+
+  .sizes{display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap}
+  .sizes figure{margin:0; text-align:center}
+  .sizes img{display:block; filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
+  .sizes figcaption{font-size:11px; color:var(--ink2); margin-top:8px}
+
+  .zoomgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px}
+  .zoom{
+    height:190px; border-radius:12px; border:1px solid var(--line);
+    background-image:url("images/badge_particle_remnant_3d.png");
+    background-repeat:no-repeat; background-color:#120f18;
+  }
+  .zoom.a{background-size:300% 300%; background-position:26% 22%}
+  .zoom.b{background-size:320% 320%; background-position:74% 58%}
+  .zoom.c{background-size:260% 260%; background-position:50% 12%}
+  .zoom:nth-child(1){}
+  .zoomcap{font-size:11.5px; color:var(--ink2); margin-top:7px}
+
+  ul.notes{margin:0; padding-left:18px; color:var(--ink2); font-size:13.5px}
+  ul.notes li{margin-bottom:7px}
+  ul.notes b{color:var(--gold2); font-weight:600}
+  code{background:#2a2336; border:1px solid var(--line); padding:1px 6px; border-radius:6px; font-size:12px; color:var(--gold2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>粒子残核 · <span>3D 立体电弧</span></h1>
+  <div class="sub">电弧改为程序化 3D 轨道 + 圆柱截面着色：白热芯 / 琥珀管身 / 侧向高光，并按深度分层遮挡 —— 真正"绕"在玻璃上，而非平贴。</div>
+
+  <div class="card">
+    <h2>多底色验证（换任何底都不穿帮）</h2>
+    <div class="tabs" id="tabs">
+      <button data-bd="bd-popup" class="on">深色遮罩（弹窗）</button>
+      <button data-bd="bd-check">透明棋盘</button>
+      <button data-bd="bd-white">纯白</button>
+      <button data-bd="bd-cream">米色</button>
+      <button data-bd="bd-slate">深蓝灰</button>
+    </div>
+    <div class="stage bd-popup" id="stage">
+      <img src="images/badge_particle_remnant_3d.png" alt="粒子残核 3D 徽章" />
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>多尺寸（列表 / 角标）</h2>
+    <div class="sizes">
+      <figure><img src="images/badge_particle_remnant_3d.png" style="width:128px"><figcaption>128px</figcaption></figure>
+      <figure><img src="images/badge_particle_remnant_3d.png" style="width:96px"><figcaption>96px</figcaption></figure>
+      <figure><img src="images/badge_particle_remnant_3d.png" style="width:64px"><figcaption>64px</figcaption></figure>
+      <figure><img src="images/badge_particle_remnant_3d.png" style="width:48px"><figcaption>48px</figcaption></figure>
+      <figure><img src="images/badge_particle_remnant_3d.png" style="width:32px"><figcaption>32px</figcaption></figure>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>细节：立体感从哪来</h2>
+    <div class="zoomgrid">
+      <div>
+        <div class="zoom a"></div>
+        <div class="zoomcap">① 管身截面 —— 中心白热、边缘转琥珀</div>
+      </div>
+      <div>
+        <div class="zoom b"></div>
+        <div class="zoomcap">② 接触阴影 —— 电弧"压"在玻璃上</div>
+      </div>
+      <div>
+        <div class="zoom c"></div>
+        <div class="zoomcap">③ 沿轮廓走 —— 绕到背后的段变暗</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>技术要点</h2>
+    <ul class="notes">
+      <li><b>分工</b>：有机玻璃形体交给 AI 生成；电弧的 3D 纵深关系由程序控制（AI 画不准遮挡）。</li>
+      <li><b>深度分层</b>：每条弧按 z 符号切段，后段先画（被核心挡住），前段后画（压在核心上）。</li>
+      <li><b>圆柱着色</b>：有符号距离场 <code>shade=sqrt(1-(d/w)²)</code>，白热芯 <code>shade^2.6</code>，侧向高光模拟管面反光。</li>
+      <li><b>深度亮度</b>：越靠近观者越亮，绕到背面越暗 —— 这是"立体"最强的线索。</li>
+      <li><b>工程细节</b>：全程预乘 alpha 合成 + 2×2 降采样，避免透明黑边把细弧糊成炭灰。</li>
+      <li><b>输出</b>：<code>images/badge_particle_remnant_3d.png</code>，821×821 RGBA，四角 alpha=0。</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  var tabs = document.getElementById('tabs');
+  var stage = document.getElementById('stage');
+  tabs.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    [].forEach.call(tabs.children, function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    stage.className = 'stage ' + b.dataset.bd;
+  });
+</script>
+</body>
+</html>

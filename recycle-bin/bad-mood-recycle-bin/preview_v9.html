@@ -1,0 +1,2007 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>坏情绪回收站 v12 · 第六步调试 (嫩芽重做+礼物掉落 · 仅新增功能，原代码零侵入)</title>
+<style>
+  /* ===== 全局 ===== */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #1d2330 0%, #0a0c10 100%);
+    color: #cfd3d8;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .layout {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    padding: 24px;
+  }
+
+  /* ===== 调试面板 ===== */
+  .debug {
+    width: 380px;
+    max-height: 760px;
+    background: rgba(20, 24, 32, .85);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 18px;
+    padding: 22px 22px 16px;
+    overflow-y: auto;
+    backdrop-filter: blur(8px);
+    color: #c0c6cf;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .debug h3 { margin: 0 0 10px; font-size: 14px; color: #e8d5b8; letter-spacing: 1px; }
+  .debug h4 { margin: 16px 0 6px; font-size: 13px; color: #b3a684; letter-spacing: .5px; }
+  .debug code { background: rgba(255, 255, 255, .06); padding: 1px 6px; border-radius: 4px; font-size: 12px; color: #f0d9a6; }
+  .debug ol { margin: 6px 0 8px 18px; padding: 0; }
+  .debug li { margin: 2px 0; }
+  .debug .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, .05);
+  }
+  .debug .row:last-child { border-bottom: none; }
+  .debug .lbl { color: #8a92a0; }
+  .debug .val { color: #e8d5b8; font-weight: 600; }
+  .debug .val.ok { color: #7fd4a6; }
+  .debug .val.warn { color: #e8b070; }
+  .debug .btn {
+    display: inline-block;
+    padding: 6px 12px;
+    margin: 4px 4px 8px 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .1);
+    color: #cfd3d8;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .debug .btn:hover { background: rgba(255, 205, 130, .15); border-color: rgba(255, 205, 130, .3); }
+  .debug .btn.primary { background: rgba(255, 205, 130, .2); border-color: rgba(255, 205, 130, .4); color: #f0d9a6; }
+  .debug textarea {
+    width: 100%;
+    height: 56px;
+    margin-top: 6px;
+    background: rgba(0, 0, 0, .35);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #e8e6e0;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+  }
+  .small { font-size: 11px; color: #6b665c; }
+  .timeline {
+    background: rgba(0,0,0,.3);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.7;
+    color: #a8b0bb;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+  }
+  .timeline b { color: #f0d9a6; font-weight: 600; }
+
+  /* ===== 手机框 ===== */
+  .phone {
+    position: relative;
+    width: 390px;
+    height: 780px;
+    border-radius: 46px;
+    background: #0e0f12;
+    box-shadow:
+      0 30px 80px rgba(0, 0, 0, .6),
+      inset 0 0 0 2px #1a1c20,
+      inset 0 0 0 6px #0a0b0d;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 26px;
+    background: #000;
+    border-radius: 0 0 18px 18px;
+    z-index: 200;
+  }
+  .phone-screen {
+    position: absolute;
+    inset: 8px;
+    border-radius: 40px;
+    overflow: hidden;
+    background: #0c0805;
+  }
+
+  /* ===== 主场景 ===== */
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #0c0805;
+    -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+    -webkit-perspective: 1000;
+            perspective: 1000;
+  }
+
+  /* 全屏静态背景 (v12 抖动修复：背景图在整个交互过程中保持完全静止) */
+  .bg-full {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+    backface-visibility: hidden;
+    pointer-events: none;
+  }
+  /* 各状态下背景图都不做任何 transform 动画 —— 严格保持静止 */
+
+  /* 氛围层 */
+  .overlay-warm {
+    position: absolute; inset: 0; z-index: 2;
+    background: linear-gradient(180deg,
+      rgba(255, 145, 75, .04) 0%, rgba(0, 0, 0, 0) 18%,
+      rgba(0, 0, 0, .05) 45%, rgba(0, 0, 0, .28) 100%);
+    pointer-events: none;
+  }
+  .overlay-vignette {
+    position: absolute; inset: 0; z-index: 2;
+    background: radial-gradient(ellipse 65% 55% at 50% 60%, transparent 42%, rgba(0, 0, 0, .32) 100%);
+    pointer-events: none;
+  }
+  .mark-cover {
+    position: absolute; right: 0; bottom: 0; width: 18%; height: 6%; z-index: 3;
+    background: linear-gradient(135deg, transparent 0%, rgba(14, 10, 6, .7) 40%, rgba(14, 10, 6, .9) 100%);
+    pointer-events: none;
+  }
+
+  /* ==========================================================
+     主角：透明背景的回收机器人 (v6 状态机)
+     默认位置：画面中央 (left:50%, bottom:24vh, width:52vw/203px)
+     busy 状态：.robot-stage--busy 修饰 → 落到地面 (left:30%, bottom:16vh, width:48vw, scale .9;顶部文案下方/垃圾堆周围)
+     位置过渡通过 CSS transition on left/bottom/transform 实现，0.9s 平滑缓动
+     ========================================================== */
+  .robot-stage {
+    position: absolute;
+    left: 50%;
+    bottom: 24vh;            /* 187px */
+    width: 52vw;              /* 203px */
+    aspect-ratio: 1 / 1;
+    transform: translateX(-50%);
+    transition:
+      left .9s cubic-bezier(.25, .85, .3, 1.05),
+      bottom .9s cubic-bezier(.25, .85, .3, 1.05),
+      width .9s cubic-bezier(.25, .85, .3, 1.05),
+      transform .9s cubic-bezier(.25, .85, .3, 1.05);
+    z-index: 4;
+    will-change: left, bottom, transform;
+  }
+  /* v8.1 A 位置：屏中靠上、略偏左,机器人底踩在 A 圆圈"地面线"上
+     A 圆圈下沿 = 背景图"垃圾堆上方水平地面" = 屏下 50vh
+     A 圆圈水平 = 屏宽 42%(略偏左)
+     点击后: bottom 50vh→24vh(下落 26vh) + left 42%→50%(右移 8%),0.9s cubic-bezier */
+  .robot-stage--busy {
+    left: 42%;
+    bottom: 50vh;
+    width: 48vw;
+    transform: translateX(-50%) scale(.85);
+  }
+
+  /* 透明机器人图本体 */
+  .robot-character {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+    backface-visibility: hidden;
+    filter: drop-shadow(0 3px 7px rgba(0, 0, 0, .35));
+    pointer-events: none;
+  }
+  /* busy 状态下：机器人轻微摇摆，模拟在垃圾堆旁干活 */
+  .robot-stage--busy .robot-character {
+    animation: robotWobble 1.8s ease-in-out infinite;
+    transform-origin: 50% 80%;
+  }
+  @keyframes robotWobble {
+    0%, 100% { -webkit-transform: translate3d(0, 0, 0) rotate(0deg); transform: translate3d(0, 0, 0) rotate(0deg); }
+    25%      { -webkit-transform: translate3d(-1.5%, 0, 0) rotate(-1.2deg); transform: translate3d(-1.5%, 0, 0) rotate(-1.2deg); }
+    50%      { -webkit-transform: translate3d(0, 0, 0) rotate(0deg); transform: translate3d(0, 0, 0) rotate(0deg); }
+    75%      { -webkit-transform: translate3d(1.5%, 0, 0) rotate(1.2deg); transform: translate3d(1.5%, 0, 0) rotate(1.2deg); }
+  }
+
+  /* ==========================================================
+     v12 抖动修复：用户点击【确认回收】后，背景图保持完全静止
+     仅 .robot-character 在 shaking 阶段执行一次轻柔抖动 (0.5s)
+     抖动不重、不密、左右往返+微微旋转，模拟机器人"正在处理"
+     - shaking 期间 enterPhase='greeting'，busy 修饰类已被移除，
+       因此 robotWobble 不会与 robotShake 同时触发
+     - iOS 防闪屏：transform 走 translate3d 强制 GPU 合成
+     ========================================================== */
+  .scene--shaking .robot-character {
+    animation: robotShake .5s cubic-bezier(.36, .07, .19, .97) both;
+    transform-origin: 50% 80%;
+    -webkit-transform-origin: 50% 80%;
+  }
+  @keyframes robotShake {
+    0%   { -webkit-transform: translate3d(0, 0, 0)         rotate(0deg);    transform: translate3d(0, 0, 0)         rotate(0deg); }
+    10%  { -webkit-transform: translate3d(-3%, -1%, 0)     rotate(-1.4deg); transform: translate3d(-3%, -1%, 0)     rotate(-1.4deg); }
+    25%  { -webkit-transform: translate3d(3%, 1%, 0)        rotate(1.4deg);  transform: translate3d(3%, 1%, 0)        rotate(1.4deg); }
+    40%  { -webkit-transform: translate3d(-2.5%, -0.5%, 0) rotate(-1deg);   transform: translate3d(-2.5%, -0.5%, 0) rotate(-1deg); }
+    55%  { -webkit-transform: translate3d(2.5%, 0.5%, 0)   rotate(1deg);    transform: translate3d(2.5%, 0.5%, 0)   rotate(1deg); }
+    70%  { -webkit-transform: translate3d(-2%, 0, 0)       rotate(-0.7deg); transform: translate3d(-2%, 0, 0)       rotate(-0.7deg); }
+    85%  { -webkit-transform: translate3d(1.5%, 0, 0)      rotate(0.5deg);  transform: translate3d(1.5%, 0, 0)      rotate(0.5deg); }
+    100% { -webkit-transform: translate3d(0, 0, 0)         rotate(0deg);    transform: translate3d(0, 0, 0)         rotate(0deg); }
+  }
+
+  /* 头顶指示灯（默认暗色，灯亮由 .intro--lamp / .intro--greeting 控制） */
+  .robot-lamp {
+    position: absolute;
+    left: 50%; top: 8%;
+    width: 6%; height: 6%;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: #3a2f23;
+    border: .5% solid #1a120a;
+    box-shadow: inset 0 0 4% rgba(0, 0, 0, .8);
+    transition: background .3s, box-shadow .3s;
+    pointer-events: none;
+    z-index: 6;
+  }
+  /* v9 灯亮分阶段：attentive 不亮，lamp_on 一次性点亮，greeting 保持亮 */
+  .intro--lamp .robot-lamp {
+    background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+    animation: lampOn .5s cubic-bezier(.4, 0, .2, 1) forwards;
+  }
+  .intro--ask .robot-lamp,
+  .intro--greeting .robot-lamp {
+    background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+    box-shadow: 0 0 8% 4% rgba(255, 200, 110, .65);
+  }
+  @keyframes lampOn {
+    0% {
+      background: #3a2f23;
+      box-shadow: inset 0 0 4% rgba(0, 0, 0, .8);
+    }
+    60% {
+      box-shadow: 0 0 14% 6% rgba(255, 200, 110, .9);
+    }
+    100% {
+      background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+      box-shadow: 0 0 10% 5% rgba(255, 200, 110, .8);
+    }
+  }
+
+  /* 头顶暖光晕（默认隐藏，灯亮时点亮） */
+  .robot-glow {
+    position: absolute;
+    left: 50%; top: -10%;
+    width: 75%; height: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at 50% 50%, rgba(255, 205, 130, .35) 0%, transparent 65%);
+    opacity: 0;
+    transition: opacity .4s ease;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .intro--lamp .robot-glow {
+    animation: glowOn .5s cubic-bezier(.4, 0, .2, 1) forwards;
+  }
+  .intro--ask .robot-glow,
+  .intro--greeting .robot-glow {
+    opacity: .7;
+  }
+  @keyframes glowOn {
+    0%   { opacity: 0; }
+    100% { opacity: .7; }
+  }
+
+  /* 脚下软投影 */
+  .robot-shadow {
+    position: absolute;
+    left: 50%; bottom: -3%;
+    width: 70%; height: 8%;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .3) 45%, transparent 75%);
+    filter: blur(1px);
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  /* v12.10 询问气泡：机器人到中央做完反应后，从头顶上方冒出的"引导录入"步骤 */
+  .ask-bubble {
+    position: absolute;
+    left: 50%;
+    bottom: 102%;
+    width: 132%;
+    max-width: 340px;
+    padding: 14px 18px 12px;
+    background: linear-gradient(180deg, #fffdf6 0%, #fff4dd 100%);
+    border: 2px solid rgba(255, 200, 120, .85);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+    z-index: 12;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(8%) scale(.92);
+    transition: opacity .3s ease, transform .32s cubic-bezier(.34, 1.56, .64, 1), visibility .3s;
+  }
+  .ask-bubble--show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  .ask-text {
+    font-size: 21px;
+    line-height: 1.5;
+    color: #5a4632;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .ask-actions { display: flex; gap: 12px; justify-content: center; }
+  .ask-btn {
+    flex: 1;
+    text-align: center;
+    padding: 11px 0;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+  .ask-btn--start {
+    background: linear-gradient(135deg, #ffcf7d 0%, #ff9d4d 100%);
+    color: #4a2e10;
+  }
+  .ask-btn--later {
+    background: rgba(90, 70, 50, .12);
+    color: #7a6450;
+  }
+  .ask-tail {
+    position: absolute;
+    left: 50%; bottom: -14px;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+    border-top: 16px solid #fff4dd;
+    filter: drop-shadow(0 2px 0 rgba(255, 200, 120, .85));
+  }
+
+  /* 挠头手 ✋ */
+  .greet-hand {
+    position: absolute;
+    right: 4%; bottom: 22%;
+    font-size: 18vw;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 9;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .35));
+  }
+  .greet-hand--on {
+    animation: handPat .65s cubic-bezier(.34, .6, .35, 1) forwards;
+  }
+  @keyframes handPat {
+    0%   { opacity: 0; transform: translate(0, 0) scale(.4) rotate(0deg); }
+    18%  { opacity: 1; transform: translate(0, -28%) scale(.9) rotate(-8deg); }
+    38%  { opacity: 1; transform: translate(-110%, -160%) scale(1) rotate(-18deg); }
+    /* 蹭 1 次 */
+    50%  { opacity: 1; transform: translate(-110%, -172%) scale(1.08) rotate(-18deg); }
+    62%  { opacity: 1; transform: translate(-110%, -160%) scale(1) rotate(-18deg); }
+    /* 缩回 */
+    85%  { opacity: 1; transform: translate(0, -28%) scale(.9) rotate(-8deg); }
+    100% { opacity: 0; transform: translate(0, 0) scale(.4) rotate(0deg); }
+  }
+
+  /* 眨眼 ✦ ✦ ✦ */
+  .greet-sparkles { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+  .greet-sparkle {
+    position: absolute;
+    font-size: 12%;
+    line-height: 1;
+    color: #fff7d8;
+    opacity: 0;
+    text-shadow: 0 0 8% rgba(255, 230, 150, .9);
+  }
+  .greet-sparkle.s1 { left: 24%; top: 22%; }
+  .greet-sparkle.s2 { left: 56%; top: 16%; font-size: 9%; }
+  .greet-sparkle.s3 { left: 70%; top: 30%; font-size: 7%; }
+  .greet-sparkle--on { animation: sparkleBlink .4s ease-in-out 1; }
+  .greet-sparkle.s2.greet-sparkle--on { animation-delay: .08s; }
+  .greet-sparkle.s3.greet-sparkle--on { animation-delay: .16s; }
+  @keyframes sparkleBlink {
+    0%, 100% { opacity: 0; transform: scale(.4) rotate(0deg); }
+    45%      { opacity: 1; transform: scale(1.2) rotate(45deg); }
+    75%      { opacity: .6; transform: scale(1) rotate(80deg); }
+  }
+
+  /* 黑色方块（坏情绪化形） */
+  .suck-block {
+    position: absolute;
+    left: 50%; top: 42%;
+    width: 8%; height: 8%;
+    margin-left: -4%;
+    border-radius: 1.5%;
+    background: linear-gradient(135deg, #2a2e34 0%, #0d0f12 70%);
+    box-shadow: 0 0 4% rgba(0, 0, 0, .8), inset 0 0 1.5% rgba(255, 255, 255, .08);
+    opacity: 0;
+    z-index: 7;
+    pointer-events: none;
+  }
+  .suck-block--on { animation: suckFly .9s cubic-bezier(.35, .1, .35, 1) forwards; }
+  @keyframes suckFly {
+    0%   { opacity: 0; transform: translate(0, 40%) scale(.7) rotate(0deg); }
+    22%  { opacity: 1; }
+    70%  { opacity: 1; transform: translate(0, -28%) scale(.5) rotate(180deg); }
+    100% { opacity: 0; transform: translate(0, -38%) scale(.12); }
+  }
+
+  /* +10 能量值 */
+  .float-energy {
+    position: absolute;
+    left: 50%; top: 30%;
+    transform: translateX(-50%);
+    padding: 2% 6%;
+    border-radius: 30%;
+    background: rgba(24, 20, 14, .88);
+    border: .5% solid rgba(255, 205, 130, .5);
+    color: #ffd9a0;
+    font-size: 5.5%;
+    letter-spacing: 4%;
+    opacity: 0;
+    z-index: 8;
+    pointer-events: none;
+    white-space: nowrap;
+    font-weight: 700;
+  }
+  .float-energy--on { animation: floatUp 1.25s ease-out forwards; }
+  @keyframes floatUp {
+    0%   { opacity: 0; -webkit-transform: translate3d(-50%, 4%, 0); transform: translate3d(-50%, 4%, 0); }
+    20%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { opacity: 0; -webkit-transform: translate3d(-50%, -18%, 0); transform: translate3d(-50%, -18%, 0); }
+  }
+
+
+  /* 交互热区（自动跟随机器人位置） */
+  .robot-zone {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+  }
+  /* 移动/到达中央/灯亮/面板弹出阶段：禁点 */
+  .intro--moving    .robot-zone,
+  .intro--attentive .robot-zone,
+  .intro--lamp      .robot-zone,
+  .intro--ask       .robot-zone,
+  .intro--greeting  .robot-zone { pointer-events: none; }
+
+  /* 点击提示 (v12.6 居中放置：水平相对屏幕居中，垂直贴 busy 状态机器人底)
+   busy 状态机器人底 = 屏底上方 50vh → 提示语在 (50vh - 40px) 屏底上方位置 */
+  .tap-hint {
+    position: absolute;
+    left: 50%;
+    bottom: calc(50vh - 40px);
+    transform: translateX(-50%);
+    max-width: 80vw;
+    box-sizing: border-box;
+    color: #fff4d8;
+    font-size: 20px;
+    line-height: 1.3;
+    font-weight: 900;
+    letter-spacing: 2px;
+    padding: 9px 15px;
+    border-radius: 999px;
+    background: rgba(15, 10, 5, .88);
+    border: 1px solid rgba(255, 205, 130, .7);
+    white-space: nowrap;
+    animation: hintPulse 2.2s ease-in-out infinite;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .85);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, .55);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    z-index: 5;
+  }
+  @keyframes hintPulse {
+    0%, 100% { opacity: .65; -webkit-transform: translate3d(-50%, 0, 0); transform: translate3d(-50%, 0, 0); }
+    50%      { opacity: 1;   -webkit-transform: translate3d(-50%, -8px, 0); transform: translate3d(-50%, -8px, 0); }
+  }
+  .intro--moving    .tap-hint,
+  .intro--attentive .tap-hint,
+  .intro--lamp      .tap-hint,
+  .intro--greeting  .tap-hint { display: none; }
+
+  /* 顶部文案 */
+  .top-copy {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding-top: 38px;
+    text-align: center;
+    z-index: 20;
+    pointer-events: none;
+  }
+  .top-copy-en {
+    font-size: 14px;
+    letter-spacing: 4px;
+    color: #f0e4c9;
+    font-weight: 700;
+    text-shadow: 0 1px 7px rgba(0, 0, 0, .75), 0 0 3px rgba(255, 200, 130, .25);
+  }
+  .top-copy-zh {
+    margin-top: 4px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #c5b89a;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, .75);
+  }
+
+  /* 底部文案 */
+  .bottom-copy {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding-bottom: 18px;
+    text-align: center;
+    font-size: 11px;
+    color: #9d968a;
+    letter-spacing: 1.5px;
+    z-index: 20;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, .75);
+  }
+
+  /* 引导弹窗 */
+  .guide-mask {
+    position: absolute; inset: 0;
+    background: rgba(8, 10, 13, .78);
+    z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    animation: maskIn .3s ease both;
+    padding: 0 20px;
+  }
+  @keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+  .guide-card {
+    width: 300px; max-width: 100%;
+    padding: 24px 20px 18px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #2c2a25 0%, #1d1b17 100%);
+    border: 1px solid rgba(205, 175, 130, .3);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, .65);
+    text-align: center;
+    animation: cardIn .42s cubic-bezier(.2, .9, .3, 1.25) both;
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  @keyframes cardIn {
+    0%   { -webkit-transform: translate3d(0, 10px, 0) scale(.88); transform: translate3d(0, 10px, 0) scale(.88); opacity: 0; }
+    100% { -webkit-transform: translate3d(0, 0, 0)    scale(1);    transform: translate3d(0, 0, 0)    scale(1);    opacity: 1; }
+  }
+  .guide-robot {
+    position: relative;
+    width: 60px; height: 60px;
+    margin: 0 auto 14px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #8a744f 0%, #5d4c34 100%);
+    border: 2px solid #2e241c;
+    box-shadow: 0 3px 9px rgba(0, 0, 0, .35), inset 0 -2px 3px rgba(0, 0, 0, .3);
+  }
+  .guide-robot-eye {
+    position: absolute;
+    left: 50%; top: 18px;
+    width: 25px; height: 25px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 42% 38%, #ffe6b8 0%, #f5b45e 60%, #b9772f 100%);
+    box-shadow: 0 0 9px 3px rgba(255, 190, 100, .55);
+    animation: eyeBlink 3s ease-in-out infinite;
+  }
+  @keyframes eyeBlink {
+    0%, 90%, 100% { transform: translateX(-50%) scaleY(1); }
+    93%, 97%      { transform: translateX(-50%) scaleY(.1); }
+  }
+  .guide-robot-lamp {
+    position: absolute;
+    left: 50%; top: -5px;
+    width: 8px; height: 8px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: #7fd4a6;
+    box-shadow: 0 0 5px 2px rgba(127, 212, 166, .8);
+    animation: lampBlink 1.4s ease-in-out infinite;
+  }
+  @keyframes lampBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .55; }
+  }
+  .guide-title { font-size: 19px; font-weight: 700; color: #e8d5b8; letter-spacing: 1px; margin-bottom: 4px; }
+  .guide-sub { font-size: 13px; color: #b3a684; letter-spacing: .5px; margin-bottom: 18px; }
+  /* 简化版引导(无 3 步列表):加大副文案与按钮距离 */
+  .guide-card--simple { padding: 30px 24px 22px; }
+  .guide-card--simple .guide-sub { margin-bottom: 22px; font-size: 15px; line-height: 1.55; }
+  .guide-item { display: flex; align-items: flex-start; margin-bottom: 13px; }
+  .guide-num {
+    flex-shrink: 0;
+    width: 28px; height: 28px; line-height: 26px;
+    border-radius: 50%;
+    background: rgba(255, 205, 130, .12);
+    border: 1px solid rgba(255, 205, 130, .35);
+    color: #ffd9a0; font-size: 15px; font-weight: 700;
+    text-align: center; margin-right: 11px;
+  }
+  .guide-item:first-child .guide-num {
+    background: rgba(127, 212, 166, .15);
+    border-color: rgba(127, 212, 166, .5);
+    color: #7fd4a6;
+  }
+  .guide-text { display: flex; flex-direction: column; justify-content: center; padding-top: 2px; }
+  .guide-h { font-size: 14px; color: #e8dcc2; font-weight: 600; }
+  .guide-d { margin-top: 2px; font-size: 11px; color: #8a8170; }
+  .guide-btn {
+    width: 100%; height: 46px; line-height: 46px;
+    border-radius: 23px;
+    background: linear-gradient(135deg, #e3b87f 0%, #c99a5f 100%);
+    color: #2a2016; font-size: 15px; font-weight: 700;
+    letter-spacing: 2px; border: none; padding: 0;
+    cursor: pointer;
+  }
+  .guide-btn:hover { opacity: .9; }
+
+  /* 交互面板 */
+  .panel-mask {
+    position: absolute; inset: 0;
+    background: rgba(6, 8, 11, .6);
+    z-index: 60;
+    opacity: 0; visibility: hidden;
+    transition: opacity .3s ease, visibility .3s;
+  }
+  .panel-mask--show { opacity: 1; visibility: visible; }
+  .panel {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 14px 20px 28px;
+    border-radius: 20px 20px 0 0;
+    background: linear-gradient(180deg, #2a2b2c 0%, #1f2021 100%);
+    border-top: 1px solid rgba(205, 175, 130, .22);
+    box-shadow: 0 -8px 25px rgba(0, 0, 0, .5);
+    -webkit-transform: translate3d(0, 100%, 0);
+            transform: translate3d(0, 100%, 0);
+    transition:
+      -webkit-transform .38s cubic-bezier(.22, .9, .3, 1),
+              transform .38s cubic-bezier(.22, .9, .3, 1);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  .panel-mask--show .panel {
+    -webkit-transform: translate3d(0, 0, 0);
+            transform: translate3d(0, 0, 0);
+  }
+  .panel-handle {
+    width: 36px; height: 4px;
+    margin: 0 auto 13px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, .14);
+  }
+  .panel-head {
+    display: flex; align-items: center;
+    margin-bottom: 15px;
+  }
+  .panel-robot {
+    position: relative;
+    width: 42px; height: 42px;
+    border-radius: 15px;
+    background: linear-gradient(180deg, #8a744f 0%, #5d4c34 100%);
+    border: 2px solid #2e241c;
+    flex-shrink: 0;
+  }
+  .panel-robot-eye {
+    position: absolute;
+    left: 50%; top: 11px;
+    width: 15px; height: 15px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 42% 38%, #ffe6b8 0%, #f5b45e 60%, #b9772f 100%);
+    box-shadow: 0 0 5px 2px rgba(255, 190, 100, .45);
+  }
+  .panel-q {
+    margin-left: 11px;
+    font-size: 15px; color: #e2c9a6;
+    font-weight: 600; letter-spacing: .5px;
+  }
+  .panel-input-wrap {
+    background: #17181a;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, .06);
+    padding: 3px 12px;
+    margin-bottom: 11px;
+  }
+  .panel-input {
+    width: 100%;
+    height: 44px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: #e8e6e0;
+    outline: none;
+    font-family: inherit;
+  }
+  .panel-input::placeholder { color: #6b665c; }
+  .voice-btn {
+    display: flex; align-items: center; justify-content: center;
+    height: 46px;
+    border-radius: 23px;
+    background: #17181a;
+    border: 1px solid rgba(255, 255, 255, .08);
+    margin-bottom: 11px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s;
+  }
+  .voice-btn--rec {
+    background: rgba(90, 120, 100, .28);
+    border-color: rgba(140, 200, 160, .45);
+    animation: recPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes recPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(120, 200, 160, .25); }
+    50%      { box-shadow: 0 0 0 6px rgba(120, 200, 160, 0); }
+  }
+  .mic {
+    position: relative;
+    width: 11px; height: 15px;
+    border-radius: 4px;
+    background: #8b939e;
+    margin-right: 8px;
+  }
+  .mic::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 16px;
+    width: 9px; height: 4px;
+    transform: translateX(-50%);
+    background: #8b939e;
+    border-radius: 0 0 4px 4px;
+  }
+  .mic--rec { background: #7fd4a6; }
+  .voice-text { font-size: 13px; color: #b4aca0; }
+  .confirm-btn {
+    width: 100%;
+    height: 50px;
+    border-radius: 25px;
+    background: linear-gradient(135deg, #e3b87f 0%, #c99a5f 100%);
+    color: #2a2016;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    border: none;
+    cursor: pointer;
+    transition: opacity .15s, transform .15s;
+  }
+  .confirm-btn--empty { opacity: .45; cursor: not-allowed; }
+  .confirm-btn:hover { opacity: .9; }
+  .confirm-btn:active { transform: scale(.985); }
+
+  /* 奖励掉落 */
+  .reward-mask {
+    position: absolute; inset: 0;
+    z-index: 80;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+    visibility: hidden; opacity: 0;
+    transition: opacity .3s ease, visibility .3s;
+  }
+  .reward-mask--show { visibility: visible; opacity: 1; }
+  .reward-card {
+    width: 240px;
+    padding: 25px 20px 20px;
+    border-radius: 15px;
+    background: linear-gradient(180deg, #2e2c27 0%, #22211e 100%);
+    border: 1px solid rgba(205, 175, 130, .28);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .55);
+    text-align: center;
+    -webkit-transform: translate3d(0, 0, 0) scale(.8);
+            transform: translate3d(0, 0, 0) scale(.8);
+    transition:
+      -webkit-transform .35s cubic-bezier(.2, .9, .3, 1.25),
+              transform .35s cubic-bezier(.2, .9, .3, 1.25);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  .reward-mask--show .reward-card {
+    -webkit-transform: translate3d(0, 0, 0) scale(1);
+            transform: translate3d(0, 0, 0) scale(1);
+  }
+  .reward-icon { font-size: 32px; color: #e8c891; margin-bottom: 9px; line-height: 1; }
+  .reward-title { font-size: 16px; font-weight: 700; color: #e8d5b8; letter-spacing: 1px; margin-bottom: 6px; }
+  .reward-desc { font-size: 12px; color: #9d968a; line-height: 1.6; }
+  .reward-tip { margin-top: 11px; font-size: 11px; color: #7fd4a6; }
+
+  /* ============================================================
+     v12.7 新增：藤蔓生长 + 礼物掉落
+     完全独立的 CSS，不修改任何旧规则
+     iOS 防闪屏：translate3d + backface-visibility 强制 GPU 合成
+     ============================================================ */
+  
+
+  /* ----- v12.9 能量球层 ----- */
+  .gift-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 11;  /* 必须 > .robot-zone(10)，否则点击能量球会命中下方回收热区 */
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  /* v12.9 能量球：悬浮可点击的发光圆球，点击后飞入宝箱 */
+  .gift {
+    position: absolute;
+    width: 13vw;
+    height: 13vw;
+    margin-left: -6.5vw;
+    margin-top: -6.5vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 5.2vw;       /* 心形内显示的能量数值 */
+    font-weight: 800;
+    line-height: 1;
+    /* 心形：SVG 绿渐变（与宝箱同源），用 drop-shadow 描出心形光晕 */
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2029.6'%3E%3Cdefs%3E%3CradialGradient%20id='g'%20cx='50%25'%20cy='40%25'%20r='62%25'%3E%3Cstop%20offset='0%25'%20stop-color='%23e4ffd6'/%3E%3Cstop%20offset='55%25'%20stop-color='%2378e084'/%3E%3Cstop%20offset='100%25'%20stop-color='%233caa50'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cpath%20d='M23.6,0c-3.4,0-6.3,2.7-7.6,5.6C14.7,2.7,11.8,0,8.4,0C3.8,0,0,3.8,0,8.4c0,9.4,9.5,11.9,16,21.2c6.1-9.3,16-12.1,16-21.2C32,3.8,28.2,0,23.6,0z'%20fill='url(%23g)'/%3E%3C/svg%3E");
+    background-size: 90%;
+    background-repeat: no-repeat;
+    background-position: center;
+    filter: drop-shadow(0 0 10px rgba(120, 224, 150, .75));
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 40, 10, .5);
+    pointer-events: auto;
+    cursor: pointer;
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(.5);
+    animation: giftFloat 6s ease-in-out forwards;
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+    will-change: transform, opacity;
+  }
+  .gift--collecting {
+    animation: giftToChest .48s cubic-bezier(.5, 0, .7, 1) forwards !important;
+    pointer-events: none;
+  }
+  @keyframes giftFloat {
+    0%   { opacity: 0; transform: translate3d(0, -12px, 0)  scale(.5); }
+    12%  { opacity: 1; transform: translate3d(0, 0, 0)      scale(1); }
+    50%  { opacity: 1; transform: translate3d(0, -16px, 0) scale(1.05); }
+    84%  { opacity: 1; transform: translate3d(0, 6px, 0)    scale(1); }
+    100% { opacity: 0; transform: translate3d(0, 34px, 0)  scale(.7); }
+  }
+  @keyframes giftToChest {
+    0%   { opacity: 1; transform: translate3d(0, 0, 0)    scale(1); }
+    100% { opacity: 0; transform: translate3d(0, 60vh, 0) scale(.2); }
+  }
+
+  /* ============================================================
+     v12.9 宝箱 HUD（屏幕级固定，不随机器人移动）
+     ============================================================ */
+  .chest-hud {
+    position: absolute;
+    right: 14px;
+    bottom: 26px;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 14px 8px;
+    background: rgba(14, 30, 20, .6);
+    border: 2px solid rgba(120, 224, 150, .55);
+    border-radius: 20px;
+    backdrop-filter: blur(6px);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+    transition: transform .2s ease;
+    cursor: pointer;
+  }
+  .chest-hud--bounce { animation: chestBounce .42s cubic-bezier(.3, 1.4, .5, 1); }
+  @keyframes chestBounce {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+  .chest-icon  { font-size: 30px; line-height: 1; filter: drop-shadow(0 0 6px rgba(120, 224, 150, .5)); }
+  .chest-count { font-size: 22px; font-weight: 800; color: #b6f7c9; margin-top: 2px; text-shadow: 0 0 8px rgba(120, 224, 150, .4); }
+  .chest-label { font-size: 14px; color: #8fd9a8; }
+
+  /* ============================================================
+     v12.9 数字藏品馆（底部面板上滑）
+     ============================================================ */
+  .chest-mask {
+    position: absolute;
+    inset: 0;
+    z-index: 90;
+    background: rgba(0, 0, 0, .5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  .chest-panel {
+    width: 100%;
+    max-height: 80%;
+    background: linear-gradient(180deg, #16301f, #0e1f15);
+    border-top-left-radius: 28px;
+    border-top-right-radius: 28px;
+    border-top: 2px solid rgba(120, 224, 150, .4);
+    padding: 30px 24px 40px;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, .5);
+    animation: chestUp .3s cubic-bezier(.2, .9, .3, 1.1);
+    overflow-y: auto;
+    box-sizing: border-box;
+  }
+  @keyframes chestUp {
+    from { transform: translate3d(0, 100%, 0); }
+    to   { transform: translate3d(0, 0, 0); }
+  }
+  .chest-panel-head { text-align: center; margin-bottom: 20px; }
+  .chest-panel-title { display: block; font-size: 30px; font-weight: 800; color: #b6f7c9; }
+  .chest-panel-sub   { display: block; font-size: 16px; color: #8fd9a8; margin-top: 6px; }
+  .chest-panel-energy{ font-size: 18px; color: #eafff1; margin-top: 12px; }
+  .chest-grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+  .chest-card {
+    width: 30%;
+    min-width: 30%;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, .05);
+    border: 2px solid rgba(120, 224, 150, .25);
+    border-radius: 18px;
+    padding: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .chest-card--owned { border-color: rgba(120, 230, 160, .7); background: rgba(120, 230, 160, .12); }
+  .chest-card-icon  { font-size: 38px; line-height: 1; }
+  .chest-card-name  { font-size: 16px; color: #fff; margin-top: 8px; }
+  .chest-card-cost  { font-size: 14px; color: #8fd9a8; margin-top: 4px; }
+  .chest-card-owned { font-size: 14px; color: #7be0a0; margin-top: 10px; font-weight: 700; }
+  .chest-card-btn {
+    margin-top: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0e1f15;
+    background: linear-gradient(180deg, #9bf0b0, #4fc06e);
+    padding: 6px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .chest-card-btn--off { background: rgba(255, 255, 255, .12); color: #6f9c80; cursor: default; }
+  .chest-close {
+    margin: 24px auto 0;
+    width: 60%;
+    text-align: center;
+    font-size: 22px;
+    color: #fff;
+    background: rgba(255, 255, 255, .1);
+    padding: 14px 0;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <!-- ============ 手机框（演示用） ============ -->
+    <div class="phone">
+      <div class="phone-screen">
+
+        <!-- ===== 主场景 ===== -->
+        <div class="scene" id="scene">
+
+          <!-- 全屏静态背景 -->
+          <img class="bg-full" id="bg" src="images/bg_scrap.png" alt="" />
+
+          <!-- 氛围层 -->
+          <div class="overlay-warm"></div>
+          <div class="overlay-vignette"></div>
+          <div class="mark-cover"></div>
+
+          <!-- ===== 机器人 stage ===== -->
+          <div class="robot-stage" id="robotStage">
+            <img class="robot-character" src="images/robot_transparent.png" alt="" />
+
+            <!-- 挠头手 -->
+            <div class="greet-hand" id="greetHand">✋</div>
+            <!-- 眨眼 ✦ -->
+            <div class="greet-sparkles">
+              <div class="greet-sparkle s1" id="sparkle1">✦</div>
+              <div class="greet-sparkle s2" id="sparkle2">✦</div>
+              <div class="greet-sparkle s3" id="sparkle3">✦</div>
+            </div>
+
+            <!-- 头顶指示灯 + 暖光晕 -->
+            <div class="robot-lamp"></div>
+            <div class="robot-glow"></div>
+
+            <!-- v12.10 询问气泡：机器人到中央做完反应后冒出，作为"让用户录入坏情绪"的独立步骤 -->
+            <div class="ask-bubble" id="askBubble">
+              <div class="ask-text">你今天有什么要回收的吗？</div>
+              <div class="ask-actions">
+                <div class="ask-btn ask-btn--start" id="askStart">开始倾诉</div>
+                <div class="ask-btn ask-btn--later" id="askLater">先不了</div>
+              </div>
+              <div class="ask-tail"></div>
+            </div>
+
+            <!-- 脚下软投影 -->
+            <div class="robot-shadow"></div>
+
+            <!-- 黑色方块（坏情绪化形） -->
+            <div class="suck-block" id="suckBlock"></div>
+            <!-- +10 能量值 -->
+            <div class="float-energy" id="floatEnergy">+10 能量值</div>
+
+            <!-- 脚下：底部绿芽/裂缝/草地已按需求移除（v12.9 补丁） -->
+
+            <!-- ============================================================
+                 v12.7 礼物层（新增）—— 从机器人周边向下飘落小礼物
+                 z-index：11（必须 > robot-zone 10，否则点击能量球会命中回收热区；panel-mask 60 / reward-mask 80 都在上面 → 弹窗覆盖）
+                 触发：JS _dropGift 动态 appendChild 到 #giftLayer
+                 ============================================================ -->
+            <div class="gift-layer" id="giftLayer"></div>
+
+            <!-- 交互热区（自动跟随机器人位置） -->
+            <div class="robot-zone" id="robotZone">
+            </div>
+          </div>
+
+          <!-- v12.9 宝箱 HUD（屏幕级固定，不随机器人移动） -->
+          <div class="chest-hud" id="chestHud">
+            <div class="chest-icon">🎁</div>
+            <div class="chest-count" id="chestCount">0</div>
+            <div class="chest-label">正能量</div>
+          </div>
+
+          <!-- v12.9 数字藏品馆（用正能量兑换专属数字藏品） -->
+          <div class="chest-mask" id="chestMask" style="display:none">
+            <div class="chest-panel" id="chestPanel">
+              <div class="chest-panel-head">
+                <span class="chest-panel-title">数字藏品馆</span>
+                <span class="chest-panel-sub">用回收收集的正能量，兑换专属数字藏品</span>
+                <div class="chest-panel-energy">当前正能量：<span id="chestEnergy">0</span></div>
+              </div>
+              <div class="chest-grid" id="chestGrid"></div>
+              <div class="chest-close" id="chestClose">关闭</div>
+            </div>
+          </div>
+
+          <!-- 悬浮提示文字（v12.6 居中放置：水平相对屏幕居中） -->
+          <div class="tap-hint" id="tapHint">点击 Nova，回收 emo</div>
+
+          <!-- 底部草地已按需求移除（v12.9 补丁） -->
+
+          <!-- 顶部文案 -->
+          <div class="top-copy">
+            <div class="top-copy-en">LIGHT UP YOUR MOOD</div>
+            <div class="top-copy-zh">点亮情绪 · 点亮心情</div>
+          </div>
+          <!-- 底部文案 -->
+          <div class="bottom-copy" id="bottomCopy">坏情绪回收站 · 微信小程序演示版</div>
+
+          <!-- 首次引导 -->
+          <div class="guide-mask" id="guideMask" style="display:none">
+            <div class="guide-card guide-card--simple">
+              <div class="guide-robot">
+                <div class="guide-robot-eye"></div>
+                <div class="guide-robot-lamp"></div>
+              </div>
+              <div class="guide-title">欢迎来到 emo 回收站</div>
+              <div class="guide-sub">点击 NOVA，扔掉你的坏心情</div>
+              <button class="guide-btn" id="guideBtn">开始</button>
+            </div>
+          </div>
+
+          <!-- 交互面板 -->
+          <div class="panel-mask" id="panelMask">
+            <div class="panel">
+              <div class="panel-handle"></div>
+              <div class="panel-head">
+                <div class="panel-robot">
+                  <div class="panel-robot-eye"></div>
+                </div>
+                <div class="panel-q">把坏心情交给 Nova 就好～</div>
+              </div>
+              <div class="panel-input-wrap">
+                <input class="panel-input" id="panelInput" placeholder="写下或说出你的坏心情……" maxlength="80" />
+              </div>
+              <div class="voice-btn" id="voiceBtn">
+                <div class="mic" id="mic"></div>
+                <div class="voice-text" id="voiceText">按住说话（演示）</div>
+              </div>
+              <button class="confirm-btn" id="confirmBtn">确认回收</button>
+            </div>
+          </div>
+
+          <!-- 奖励掉落 -->
+          <div class="reward-mask" id="rewardMask">
+            <div class="reward-card">
+              <div class="reward-icon" id="rewardIcon">✦</div>
+              <div class="reward-title" id="rewardTitle">积分 +50</div>
+              <div class="reward-desc" id="rewardDesc">回收站积分 · 已存入情绪账本</div>
+              <div class="reward-tip">坏情绪已回收，继续向前走</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 调试面板 ============ -->
+    <div class="debug">
+      <h3>🛠 调试面板 · v12.9 (宝箱·能量收集·数字藏品)</h3>
+
+      <h4>核心状态</h4>
+      <div class="row"><span class="lbl">enterPhase</span><span class="val" id="dPhase">busy</span></div>
+      <div class="row"><span class="lbl">robotState</span><span class="val" id="dRobot">busy</span></div>
+      <div class="row"><span class="lbl">panelVisible</span><span class="val" id="dPanel">false</span></div>
+      <div class="row"><span class="lbl">askVisible</span><span class="val" id="dAsk">false</span></div>
+      <div class="row"><span class="lbl">submitting</span><span class="val" id="dSub">false</span></div>
+      <div class="row"><span class="lbl">blinkActive</span><span class="val" id="dBlink">false</span></div>
+      <div class="row"><span class="lbl">patActive</span><span class="val" id="dPat">false</span></div>
+
+      <h4>回收数据</h4>
+      <div class="row"><span class="lbl">回收次数</span><span class="val" id="dCount">0</span></div>
+      <div class="row"><span class="lbl">能量值</span><span class="val" id="dEnergy">0</span></div>
+      <div class="row"><span class="lbl">当前情绪</span><span class="val" id="dMood">normal</span></div>
+      <div class="row"><span class="lbl">guide_shown</span><span class="val" id="dGuide">true</span></div>
+      <!-- v12.7 新增：藤蔓 / 礼物调试字段 -->
+      <div class="row"><span class="lbl">礼物队列</span><span class="val" id="dGift">0</span></div>
+      <!-- v12.9 新增：宝箱调试字段 -->
+      <div class="row"><span class="lbl">宝箱·正能量</span><span class="val" id="dEnergyC">0</span></div>
+      <div class="row"><span class="lbl">已收藏藏品</span><span class="val" id="dOwned">0</span></div>
+
+      <h4>状态机时间线</h4>
+      <div class="timeline">
+        <div><b>0 ms</b> — busy：机器人在垃圾堆旁干活（可点击）</div>
+        <div><b>0~900 ms</b> — moving：点击后从垃圾堆移到画面中央（CSS transition，wobble 停止 = 切回正面）</div>
+        <div><b>900 ms</b> — attentive：眨眼（0.4s × 3 错开）+ 挠头（0.65s，各播一次）</div>
+        <div><b>1700 ms</b> — lamp_on：头顶指示灯一次性点亮 0.5s</div>
+        <div><b>2200 ms</b> — ask：头顶冒出问话气泡 + "开始倾诉"按钮（独立"引导录入"步骤）</div>
+        <div><b>点击"开始倾诉"</b> — greeting：滑出录入面板（问句已说过，面板承接"把坏心情交给 Nova 就好～"）</div>
+      </div>
+
+      <h4>第三步：回收时序</h4>
+      <div class="timeline">
+        <div><b>0 ms</b> — 用户点"确认回收"，情绪识别（tired/sad/angry/normal）</div>
+        <div><b>0~920 ms</b> — sucking：黑色方块飞入机器人胸口（@keyframes suckFly，<b style="color:#7fd4a6">背景图保持完全静止</b>）</div>
+        <div><b>920~1420 ms</b> — shaking：<b style="color:#7fd4a6">仅 .robot-character 抖动 0.5s</b>（@keyframes robotShake，背景图完全静止）+ +10 能量浮字（@keyframes floatUp 1.25s）</div>
+        <div><b>920+600 ms</b> — 🎁 奖励卡弹出（reward-mask，2.6s 自动消失）</div>
+        <div><b>2520 ms</b> — 机器人回 busy（移回垃圾堆旁）</div>
+        <div><b>~3570 ms</b> — 机器人<b style="color:#ffd97a">回原位后</b>释放正能量球（环绕归位后的机器人，<b style="color:#f9a">不在回程途中</b>），用户点击收集进宝箱</div>
+      </div>
+
+      <h4>快捷操作</h4>
+      <button class="btn primary" id="btnReset">↺ 重置全部状态</button>
+      <button class="btn" id="btnShowGuide">📋 重新显示引导弹窗</button>
+      <button class="btn" id="btnForceBusy">回到 busy 状态</button>
+      <button class="btn" id="btnTriggerClick">模拟点击机器人</button>
+
+      <h4>情绪快捷输入</h4>
+      <button class="btn" data-text="今天开会开了好久，好累……">😴 疲惫</button>
+      <button class="btn" data-text="有点委屈，感觉自己不被理解。">😢 委屈</button>
+      <button class="btn" data-text="刚跟人吵架了，气得不行。">😡 愤怒</button>
+      <button class="btn" data-text="今天心情还不错">😊 普通</button>
+      <textarea id="freeText" placeholder="自定义输入……"></textarea>
+
+      <h4>核验清单</h4>
+      <ol>
+        <li>重载后是否弹引导：<span class="val" id="chk1">✓ 不弹</span></li>
+        <li>只点击机器人弹面板：<span class="val" id="chk3">✓ 正确</span></li>
+        <li>底部无绿芽/草地生长：<span class="val" id="chk2">✓ 已移除</span></li>
+      </ol>
+
+      <p class="small">长按底部文案可重置首次引导，便于反复验证。</p>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   坏情绪回收站 v6 · 浏览器演示脚本
+   与小程序 pages/index/index.js 状态机完全同步
+   ============================================================ */
+
+const GUIDE_KEY = 'bmb_guide_shown_v1';
+
+const MOOD_RULES = [
+  { type: 'tired',  words: ['累', '疲惫', '困', '乏', '没力气', '没劲', '加班', '熬夜', '虚脱', '透支', '不想动', '精疲力尽', '好累', '累死', '疲惫不堪'] },
+  { type: 'sad',    words: ['委屈', '难过', '伤心', '哭', '想哭', '心酸', '难受', '抑郁', '失落', '想家', '眼泪', '哽咽', '憋屈', '被冤枉', '不被理解'] },
+  { type: 'angry',  words: ['生气', '愤怒', '气死', '火大', '暴躁', '烦', '讨厌', '恨', '抓狂', '恼火', '憋火', '不爽', '炸', '烦躁', '烦死', '暴怒'] }
+];
+
+const REWARD_POOL = [
+  { icon: '✦', title: '积分 +50', desc: '回收站积分 · 已存入情绪账本' },
+  { icon: '❀', title: '徽章 · 小小治愈师', desc: '第一次勇敢投递，值得一朵小花' },
+  { icon: '♡', title: '温暖短句', desc: '“今天也辛苦了，你已经做得很好了。”' },
+  { icon: '☁', title: '温暖短句', desc: '“坏情绪不是你的错，它只是路过。”' },
+  { icon: '✦', title: '积分 +100', desc: '回收站积分 · 已存入情绪账本' },
+  { icon: '❀', title: '模拟权益 · 暖心补给券', desc: '（演示）下次低落时，兑换一次深呼吸' }
+];
+
+const VOICE_SAMPLES = [
+  '今天开会开了好久，好累……',
+  '有点委屈，感觉自己不被理解。',
+  '刚跟人吵架了，气得不行。',
+  '加班到很晚，精疲力尽。',
+  '想到一些事，心里闷闷的难受。'
+];
+
+/* ============================================================
+   App state (mirror Page.data)
+   ============================================================ */
+const app = {
+  // 首次引导
+  showGuide: false,
+  // 机器人主状态
+  robotState: 'busy',
+  // 状态机
+  enterPhase: 'busy',
+  blinkActive: false,
+  patActive: false,
+  // 交互面板
+  panelVisible: false,
+  // v12.10 独立"询问"步骤：机器人到中央做完反应后先冒出问话气泡 + "开始倾诉"按钮，
+  // 作为明确可感知的"让用户录入坏情绪"步骤；点"开始倾诉"才滑出录入框
+  askVisible: false,
+  submitting: false,
+  inputText: '',
+  // 语音输入
+  recording: false,
+  // 回收数据
+  energy: 0,
+  recycleCount: 0,
+  moodType: 'normal',
+  // 动画
+  suckAnim: false,
+  floatEnergy: false,
+  rewardVisible: false,
+  reward: {},
+  /* v12.8 礼物掉落（新增，不修改旧 data） */
+  giftItems: [],
+
+  /* v12.9 宝箱：收集的正能量 + 数字藏品 */
+  collectedEnergy: 0,
+  ownedCollectibles: [],
+  chestOpen: false,
+  chestBounce: false,
+  chestItems: []
+};
+
+/* v12.7 新增：mini-program setData 的 H5 镜像（不带回调版即可） */
+function setData(patch) {
+  Object.assign(app, patch);
+}
+
+/* ============================================================
+   DOM refs
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const scene      = $('scene');
+const robotStage = $('robotStage');
+const robotZone  = $('robotZone');
+const tapHint    = $('tapHint');
+const greetHand  = $('greetHand');
+const sparkles   = [$('sparkle1'), $('sparkle2'), $('sparkle3')];
+const suckBlock  = $('suckBlock');
+const floatEnergy= $('floatEnergy');
+const guideMask  = $('guideMask');
+const guideBtn   = $('guideBtn');
+const panelMask  = $('panelMask');
+const panelInput = $('panelInput');
+const voiceBtn   = $('voiceBtn');
+const voiceText  = $('voiceText');
+const mic        = $('mic');
+const confirmBtn = $('confirmBtn');
+const rewardMask = $('rewardMask');
+const rewardIcon = $('rewardIcon');
+const rewardTitle= $('rewardTitle');
+const rewardDesc = $('rewardDesc');
+const bottomCopy = $('bottomCopy');
+/* v12.8 礼物掉落相关 DOM refs（藤蔓体系已移除） */
+const giftLayer    = $('giftLayer');
+/* v12.10 询问气泡 DOM ref */
+const askBubble    = $('askBubble');
+/* v12.9 宝箱 / 数字藏品馆 DOM refs */
+const chestHud    = $('chestHud');
+const chestMask   = $('chestMask');
+const chestGrid   = $('chestGrid');
+const chestEnergy = $('chestEnergy');
+const chestCount  = $('chestCount');
+const chestClose  = $('chestClose');
+
+/* ============================================================
+   Render
+   ============================================================ */
+function render() {
+  // scene class
+  scene.className = `scene scene--${app.robotState} intro--${app.enterPhase}`;
+
+  // robot-stage busy 修饰
+  robotStage.classList.toggle('robot-stage--busy', app.enterPhase === 'busy');
+
+  // 眨眼
+  sparkles.forEach(el => el.classList.toggle('greet-sparkle--on', app.blinkActive));
+  // 挠头
+  greetHand.classList.toggle('greet-hand--on', app.patActive);
+
+  // 黑色方块
+  suckBlock.classList.toggle('suck-block--on', app.suckAnim);
+  // +10 能量
+  floatEnergy.classList.toggle('float-energy--on', app.floatEnergy);
+
+  // 引导
+  guideMask.style.display = app.showGuide ? 'flex' : 'none';
+
+  // 面板
+  panelMask.classList.toggle('panel-mask--show', app.panelVisible);
+
+  // v12.10 询问气泡（独立"引导录入"步骤）
+  askBubble.classList.toggle('ask-bubble--show', app.askVisible);
+
+  // tap-hint
+  tapHint.style.display = (app.enterPhase === 'busy' && !app.panelVisible) ? '' : 'none';
+
+
+  /* v12.7 新增：礼物渲染同步（items 由 dropGift 写入 giftItems） */
+  while (giftLayer.firstChild) giftLayer.removeChild(giftLayer.firstChild);
+  (app.giftItems || []).forEach(it => {
+    const el = document.createElement('div');
+    el.className = `gift gift--${it.type}${it._fly ? ' gift--collecting' : ''}`;
+    el.textContent = it.value;
+    el.style.left = it.x + '%';
+    el.style.top  = (it.top || 30) + '%';
+    el.style.animationDelay = it.delay + 'ms';
+    el.dataset.id = it.id;
+    giftLayer.appendChild(el);
+  });
+
+  /* v12.9 宝箱 HUD + 数字藏品馆 */
+  if (chestCount) chestCount.textContent = app.collectedEnergy;
+  if (chestHud)  chestHud.classList.toggle('chest-hud--bounce', app.chestBounce);
+  if (app.chestOpen) {
+    chestMask.style.display = 'flex';
+    if (chestEnergy) chestEnergy.textContent = app.collectedEnergy;
+    if (chestGrid) {
+      chestGrid.innerHTML = '';
+      (app.chestItems || []).forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'chest-card' + (c.owned ? ' chest-card--owned' : '');
+        const diff = c.cost - app.collectedEnergy;
+        let btn;
+        if (c.owned)            btn = '<div class="chest-card-owned">已拥有</div>';
+        else if (c.canAfford)   btn = '<div class="chest-card-btn" data-id="' + c.id + '">兑换</div>';
+        else                    btn = '<div class="chest-card-btn chest-card-btn--off">还差 ' + diff + '</div>';
+        card.innerHTML =
+          '<div class="chest-card-icon">' + c.icon + '</div>' +
+          '<div class="chest-card-name">' + c.name + '</div>' +
+          '<div class="chest-card-cost">' + c.cost + ' 正能量</div>' + btn;
+        chestGrid.appendChild(card);
+      });
+    }
+  } else {
+    chestMask.style.display = 'none';
+  }
+
+  // 语音按钮
+  voiceBtn.classList.toggle('voice-btn--rec', app.recording);
+  mic.classList.toggle('mic--rec', app.recording);
+  voiceText.textContent = app.recording ? '正在倾听……' : '按住说话（演示）';
+
+  // 确认按钮
+  confirmBtn.classList.toggle('confirm-btn--empty', !app.inputText);
+
+  // 奖励
+  rewardMask.classList.toggle('reward-mask--show', app.rewardVisible);
+  if (app.rewardVisible) {
+    rewardIcon.textContent  = app.reward.icon;
+    rewardTitle.textContent = app.reward.title;
+    rewardDesc.textContent  = app.reward.desc;
+  }
+
+  // 调试面板
+  $('dPhase').textContent  = app.enterPhase;
+  $('dPhase').className    = 'val ' + (app.enterPhase === 'busy' ? 'ok' : 'warn');
+  $('dRobot').textContent  = app.robotState;
+  $('dPanel').textContent  = app.panelVisible;
+  $('dAsk').textContent    = app.askVisible;
+  $('dSub').textContent    = app.submitting;
+  $('dBlink').textContent  = app.blinkActive;
+  $('dPat').textContent    = app.patActive;
+  $('dCount').textContent  = app.recycleCount;
+  $('dEnergy').textContent = app.energy;
+  $('dMood').textContent   = app.moodType;
+  $('dGuide').textContent  = !!localStorage.getItem(GUIDE_KEY);
+  /* v12.7 新增：藤蔓/礼物调试字段 */
+  $('dGift').textContent   = app.giftItems.length;
+  /* v12.9 宝箱调试字段 */
+  $('dEnergyC').textContent = app.collectedEnergy;
+  $('dOwned').textContent   = (app.ownedCollectibles || []).length;
+
+  // 4 条核验清单
+  const guideShown = !!localStorage.getItem(GUIDE_KEY);
+  $('chk1').textContent = guideShown ? '✓ 不弹' : '⚠ 首次会弹';
+  $('chk1').className   = 'val ' + (guideShown ? 'ok' : 'warn');
+  $('chk3').textContent = '✓ 正确';
+  $('chk4').textContent = app.recycleCount > 0 ? '✓ 已触发' : '· 待触发';
+  $('chk4').className   = 'val ' + (app.recycleCount > 0 ? 'ok' : '');
+}
+
+/* ============================================================
+   Init (mirrors Page.onLoad)
+   ============================================================ */
+/* Init (mirrors Page.onLoad)
+   调试模式下默认清掉 localStorage,让每次刷新都能看到引导弹窗(便于反复验证)
+   真实小程序请注释掉第 2 行 */
+function init() {
+  localStorage.removeItem(GUIDE_KEY);  // debug: 演示用,真实场景下应删除此行
+  app.showGuide = true;
+  app.enterPhase = 'busy';
+  // v6 移除自动入场动画；首次进入直接呈现 busy 状态的机器人
+
+  // v12.9 宝箱：跨会话恢复已收集的正能量与已拥有藏品
+  const savedEnergy = parseInt(localStorage.getItem(ENERGY_KEY) || '0', 10);
+  const savedOwned  = JSON.parse(localStorage.getItem(OWNED_KEY) || 'null');
+  app.collectedEnergy    = isNaN(savedEnergy) ? 0 : savedEnergy;
+  app.ownedCollectibles = Array.isArray(savedOwned) ? savedOwned : [];
+  app.chestItems = syncChestView();
+
+  /* v12.7 新增（v12.9 改造）：在 init 末尾劫持 app.recycleCount 与 app.enterPhase
+     的属性 set，与真实小程序 Page.onLoad 末尾的钩子完全镜像。
+     设计：使用 Object.defineProperty 重写 setter，
+     - 任何来源（onSubmit += 1 / btnReset = 0 / setData 调用等）只要给
+       app.recycleCount 赋值都会被这个 setter 捕获
+     - recycleCount 上升时仅标记 _pendingGift（不立即释放）
+     - enterPhase 切回 'busy'（机器人回原位）且 _pendingGift 为真时，
+       等回位动画(0.9s)结束后再触发 dropGift（不再是 shaking 期间 / 回程途中）
+     - 旧代码完全无需改动，最大程度尊重"不改动旧事件绑定"约束 */
+  let _rcCached = app.recycleCount || 0;
+  Object.defineProperty(app, 'recycleCount', {
+    configurable: true,
+    enumerable: true,
+    get() { return _rcCached; },
+    set(v) {
+      const before = _rcCached;
+      _rcCached = v;
+      if (typeof v === 'number' && v > before) {
+        app._pendingGift = true;   // 先标记，等机器人回原位再释放
+      }
+      render();
+    }
+  });
+
+  /* v12.9 追加：劫持 enterPhase 的 set，与小程序 setData 钩子的
+     "机器人回原位后再释放正能量"逻辑完全镜像 ——
+     仅当回填 _pendingGift 且切回 'busy' 时，等回位动画(0.9s)结束后触发 dropGift */
+  let _epCached = app.enterPhase || 'busy';
+  Object.defineProperty(app, 'enterPhase', {
+    configurable: true,
+    enumerable: true,
+    get() { return _epCached; },
+    set(v) {
+      _epCached = v;
+      if (app._pendingGift && v === 'busy') {
+        app._pendingGift = false;
+        setTimeout(() => dropGift(app.recycleCount), 1050); // 0.9s 回位 + 0.15s 缓冲
+      }
+      render();
+    }
+  });
+  render();
+}
+
+/* ============================================================
+   onGuideClose
+   ============================================================ */
+guideBtn.addEventListener('click', () => {
+  localStorage.setItem(GUIDE_KEY, '1');
+  app.showGuide = false;
+  render();
+});
+
+/* ============================================================
+   长按底部文案：重置首次引导（演示用）
+   ============================================================ */
+let pressTimer = null;
+bottomCopy.addEventListener('mousedown', () => {
+  pressTimer = setTimeout(() => {
+    localStorage.removeItem(GUIDE_KEY);
+    app.showGuide = true;
+    render();
+    alert('已重置首次引导，可重新验证（演示用）');
+  }, 800);
+});
+bottomCopy.addEventListener('mouseup', () => clearTimeout(pressTimer));
+bottomCopy.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+/* ============================================================
+   onTapRobot  (v6 完整时序)
+   ============================================================ */
+let clickTimers = [];
+robotZone.addEventListener('click', onTapRobot);
+
+/* ============================================================
+   v12.9 宝箱 / 能量球 事件绑定
+   ============================================================ */
+chestHud.addEventListener('click', openChest);
+chestClose.addEventListener('click', closeChest);
+chestMask.addEventListener('click', (e) => { if (e.target === chestMask) closeChest(); });
+chestGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('.chest-card-btn');
+  if (btn && !btn.classList.contains('chest-card-btn--off')) redeem(btn.dataset.id);
+});
+giftLayer.addEventListener('click', (e) => {
+  const g = e.target.closest('.gift');
+  if (g) { e.stopPropagation(); collectGift(g.dataset.id); }  // 拦住冒泡，绝不触发机器人回收
+});
+
+/* v12.10 询问气泡按钮：开始倾诉 / 先不了 */
+$('askStart').addEventListener('click', (e) => { e.stopPropagation(); onStartRecord(); });
+$('askLater').addEventListener('click', (e) => { e.stopPropagation(); onDismissAsk(); });
+
+function onTapRobot() {
+  if (app.showGuide) return;
+  if (app.panelVisible) return;
+  if (app.submitting) return;
+  if (app.enterPhase !== 'busy') return;
+  if (app.robotState !== 'busy') return;
+
+  clickTimers.forEach(t => clearTimeout(t));
+  clickTimers = [];
+
+  const T = (ms, fn) => { const id = setTimeout(fn, ms); clickTimers.push(id); return id; };
+
+  // ① 立即停止忙碌动画 + 触发位置过渡
+  app.robotState = 'attentive';
+  app.enterPhase = 'moving';
+  render();
+
+  // ② 移动到中央（CSS transition 0.9s 自动完成）
+
+  // ③ 到达中央后（900ms）：执行眨眼 + 挠头（一次性，不循环）
+  T(900, () => {
+    app.enterPhase = 'attentive';
+    render();
+
+    // 眨眼（0.4s × 3 颗错开）
+    app.blinkActive = true;
+    render();
+    T(420, () => { app.blinkActive = false; render(); });
+
+    // 挠头（0.65s，紧跟眨眼开始）
+    T(80, () => {
+      app.patActive = true;
+      render();
+      T(680, () => { app.patActive = false; render(); });
+    });
+
+    // ④ 眨眼 + 挠头完成后（~1700ms）：进入 lamp_on 阶段，头顶指示灯一次性点亮 0.5s
+    T(1700, () => {
+      app.enterPhase = 'lamp_on';
+      render();
+
+      // ⑤ 灯亮完成后（~2200ms）：进入「询问」步骤——机器人头顶冒出问话气泡 +
+      //    "开始倾诉"按钮，作为明确可感知的"让用户录入坏情绪"步骤；点"开始倾诉"才滑出录入框
+      T(500, () => {
+        app.enterPhase = 'ask';
+        app.askVisible = true;
+        render();
+      });
+    });
+  });
+}
+
+/* ============================================================
+   onClosePanel
+   ============================================================ */
+panelMask.addEventListener('click', (e) => {
+  if (e.target === panelMask) onClosePanel();
+});
+function onClosePanel() {
+  if (app.submitting) return;
+  if (!app.panelVisible) return;
+  app.panelVisible = false;
+  render();
+  setTimeout(() => {
+    if (!app.panelVisible && !app.submitting) {
+      // 回到「询问」步骤：机器人留在中央，气泡重新出现，等待用户
+      app.enterPhase = 'ask';
+      app.askVisible = true;
+      render();
+    }
+  }, 340);
+}
+
+/* ============================================================
+   v12.10 询问步骤：从气泡进入录入框 / 用户选择"先不了"
+   ============================================================ */
+function onStartRecord() {
+  if (app.submitting) return;
+  if (!app.askVisible) return;
+  app.askVisible = false;
+  app.enterPhase = 'greeting';
+  app.panelVisible = true;
+  render();
+}
+function onDismissAsk() {
+  if (!app.askVisible) return;
+  app.askVisible = false;
+  app.robotState = 'busy';
+  app.enterPhase = 'busy';
+  render();
+}
+
+/* ============================================================
+   输入
+   ============================================================ */
+panelInput.addEventListener('input', (e) => {
+  app.inputText = e.target.value;
+  render();
+});
+
+/* ============================================================
+   语音输入（演示）
+   ============================================================ */
+let voiceTimer = null;
+function onVoiceStart() {
+  if (app.submitting) return;
+  app.recording = true;
+  render();
+  voiceTimer = setTimeout(() => {
+    if (app.recording) onVoiceEnd();
+  }, 6000);
+}
+function onVoiceEnd() {
+  if (!app.recording) return;
+  if (voiceTimer) { clearTimeout(voiceTimer); voiceTimer = null; }
+  app.recording = false;
+  render();
+  const sample = VOICE_SAMPLES[Math.floor(Math.random() * VOICE_SAMPLES.length)];
+  setTimeout(() => {
+    app.inputText = sample;
+    panelInput.value = sample;
+    render();
+  }, 700);
+}
+voiceBtn.addEventListener('mousedown', onVoiceStart);
+voiceBtn.addEventListener('mouseup', onVoiceEnd);
+voiceBtn.addEventListener('mouseleave', onVoiceEnd);
+voiceBtn.addEventListener('touchstart', (e) => { e.preventDefault(); onVoiceStart(); });
+voiceBtn.addEventListener('touchend',   (e) => { e.preventDefault(); onVoiceEnd(); });
+voiceBtn.addEventListener('touchcancel',(e) => { e.preventDefault(); onVoiceEnd(); });
+
+/* ============================================================
+   onSubmit
+   ============================================================ */
+function onSubmit() {
+  const text = (app.inputText || '').trim();
+  if (app.submitting) return;
+  if (!text) {
+    alert('先写下或说出你的坏心情哦');
+    return;
+  }
+
+  const moodType = detectMood(text);
+  app.submitting = true;
+  app.panelVisible = false;
+  app.inputText = '';
+  panelInput.value = '';
+  render();
+
+  const T = (ms) => new Promise(r => setTimeout(r, ms));
+
+  (async () => {
+    // ① 坏情绪化作黑色小方块飞入机器人胸口（sucking）
+    app.robotState = 'sucking';
+    app.suckAnim = true;
+    render();
+    await T(920);
+
+    // ② 吸入完成：机身震动 + +10 能量值 + 回收计数自增
+    app.suckAnim = false;
+    app.robotState = 'shaking';
+    app.floatEnergy = true;
+    app.recycleCount += 1;
+    app.energy += 10;
+    render();
+
+    // ③ 同步情绪类型
+    app.moodType = moodType;
+    render();
+
+    // ④ 震动中段（约 600ms 后）弹奖励卡，奖励 2.6s 自动消失
+    setTimeout(() => dropReward(), 600);
+
+    // ⑤ 震动结束 + 浮字消失
+    await T(1250);
+    app.floatEnergy = false;
+    render();
+
+    // ⑥ 短暂停留（350ms）让用户看到奖励；之后机器人回到垃圾堆旁
+    await T(350);
+    app.submitting = false;
+    app.robotState = 'busy';
+    app.enterPhase = 'busy';
+    render();
+  })();
+}
+confirmBtn.addEventListener('click', onSubmit);
+
+/* ============================================================
+   情绪识别
+   ============================================================ */
+function detectMood(text) {
+  for (let i = 0; i < MOOD_RULES.length; i++) {
+    const rule = MOOD_RULES[i];
+    for (let j = 0; j < rule.words.length; j++) {
+      if (text.indexOf(rule.words[j]) > -1) return rule.type;
+    }
+  }
+  return 'normal';
+}
+
+/* ============================================================
+   奖励掉落
+   ============================================================ */
+let rewardTimer = null;
+function dropReward() {
+  const reward = REWARD_POOL[Math.floor(Math.random() * REWARD_POOL.length)];
+  app.reward = reward;
+  app.rewardVisible = true;
+  render();
+  if (rewardTimer) clearTimeout(rewardTimer);
+  rewardTimer = setTimeout(() => {
+    app.rewardVisible = false;
+    render();
+  }, 2600);
+}
+
+/* ============================================================
+   v12.9 能量球掉落（preview 镜像实现；藤蔓逻辑已移除，礼物改为可收集能量球）
+   ============================================================ */
+let giftCleanTimer = null;
+
+const GIFT_TYPES = [
+  { type: 'medal',  icon: '✦' },
+  { type: 'flower', icon: '❀' },
+  { type: 'heart',  icon: '♡' },
+  { type: 'cloud',  icon: '☁' }
+];
+// 能量值池：偏向 10，偶尔 5 / 15
+const GIFT_VALUES = [5, 10, 10, 15];
+
+// v12.9 数字藏品馆目录（与 mini-program COLLECTIBLES 一致）
+const COLLECTIBLES = [
+  { id: 'sprout',  name: '萌芽徽章', icon: '🌱', cost: 20 },
+  { id: 'clover',  name: '青苗勋章', icon: '🌿', cost: 45 },
+  { id: 'bloom',   name: '暖心花语', icon: '🌸', cost: 75 },
+  { id: 'star',    name: '星光守护', icon: '🌟', cost: 110 },
+  { id: 'crystal', name: '能量水晶', icon: '💎', cost: 160 },
+  { id: 'crown',   name: '情绪园丁', icon: '👑', cost: 220 }
+];
+const ENERGY_KEY = 'bmb_energy_v1';
+const OWNED_KEY  = 'bmb_owned_v1';
+
+function dropGift(seed) {
+  // 清理上一次还在待清理的礼物（防膨胀）
+  if (giftCleanTimer) clearTimeout(giftCleanTimer);
+
+  const n = 1 + Math.floor(Math.random() * 3); // 1~3
+  const now = Date.now();
+  for (let i = 0; i < n; i++) {
+    const t = GIFT_TYPES[Math.floor(Math.random() * GIFT_TYPES.length)];
+    // 环形分布：以机器人中心为圆心，避开身体，悬浮在其四周
+    // 注意：#giftLayer 是 .robot-stage 的子节点，下面 left%/top% 是相对
+    // robot-stage 盒子（≈机器人本体）的坐标，圆心 (50, 63) = 机器人身边；
+    // 能量球随机器人移动，回原位后释放即环绕归位后的机器人。
+    // 半径 34%~42%（水平），垂直方向压缩到 0.62 倍，确保落在身体外圈
+    const ang = Math.random() * Math.PI * 2;
+    const R   = 34 + Math.random() * 8;
+    const Ry  = R * 0.62;
+    const cx = 50, cy = 63;
+    const x   = Math.max(12, Math.min(88, cx + R  * Math.cos(ang)));
+    const top = Math.max(24, Math.min(86, cy + Ry * Math.sin(ang)));
+    app.giftItems.push({
+      id: `${now}-${i}-${Math.floor(Math.random() * 99999)}`,
+      type: t.type,
+      icon: t.icon,
+      x,
+      top,
+      value: GIFT_VALUES[Math.floor(Math.random() * GIFT_VALUES.length)],
+      delay: i * (350 + Math.floor(Math.random() * 300)),
+      _fly: false
+    });
+  }
+  render();
+
+  // 6.5s 后清理过期能量球（未点击则淡出，不会再次触发钩子）
+  giftCleanTimer = setTimeout(() => {
+    const cutoff = Date.now() - 6500;
+    app.giftItems = (app.giftItems || []).filter(g => {
+      const ts = parseInt(g.id.split('-')[0], 10);
+      return ts > cutoff;
+    });
+    render();
+  }, 6500);
+}
+
+/* ============================================================
+   v12.9 能量球收集 + 数字藏品馆（preview 镜像实现）
+   ============================================================ */
+let chestBounceTimer = null;
+
+function collectGift(id) {
+  const items = app.giftItems || [];
+  const it = items.find(g => g.id === id);
+  if (!it || it._fly) return;
+  it._fly = true;                       // 触发飞向宝箱动画
+  const val = it.value || 10;
+  app.collectedEnergy += val;
+  app.chestBounce = true;
+  localStorage.setItem(ENERGY_KEY, app.collectedEnergy);
+  render();
+
+  if (chestBounceTimer) clearTimeout(chestBounceTimer);
+  chestBounceTimer = setTimeout(() => { app.chestBounce = false; render(); }, 420);
+
+  setTimeout(() => {
+    app.giftItems = (app.giftItems || []).filter(g => g.id !== id);
+    render();
+  }, 480);
+}
+
+function syncChestView() {
+  const owned = app.ownedCollectibles || [];
+  const energy = app.collectedEnergy || 0;
+  return COLLECTIBLES.map(c => ({
+    id: c.id, name: c.name, icon: c.icon, cost: c.cost,
+    owned: owned.indexOf(c.id) > -1,
+    canAfford: energy >= c.cost
+  }));
+}
+
+function openChest() {
+  app.chestItems = syncChestView();
+  app.chestOpen = true;
+  render();
+}
+function closeChest() {
+  app.chestOpen = false;
+  render();
+}
+function redeem(id) {
+  const c = COLLECTIBLES.find(x => x.id === id);
+  if (!c) return;
+  const owned = app.ownedCollectibles || [];
+  if (owned.indexOf(id) > -1) return;
+  if (app.collectedEnergy < c.cost) return;
+  app.collectedEnergy -= c.cost;
+  app.ownedCollectibles = owned.concat([id]);
+  localStorage.setItem(ENERGY_KEY, app.collectedEnergy);
+  localStorage.setItem(OWNED_KEY, JSON.stringify(app.ownedCollectibles));
+  app.chestItems = syncChestView();
+  render();
+}
+
+/* ============================================================
+   调试按钮
+   ============================================================ */
+
+/* ============================================================
+   调试按钮
+   ============================================================ */
+$('btnReset').addEventListener('click', () => {
+  localStorage.removeItem(GUIDE_KEY);
+  app.showGuide = false;
+  app.robotState = 'busy';
+  app.enterPhase = 'busy';
+  app.blinkActive = false;
+  app.patActive = false;
+  app.panelVisible = false;
+  app.submitting = false;
+  app.inputText = '';
+  panelInput.value = '';
+  app.recording = false;
+  app.energy = 0;
+  app.recycleCount = 0;
+  app.moodType = 'normal';
+  app.suckAnim = false;
+  app.floatEnergy = false;
+  app.rewardVisible = false;
+  /* v12.9 重置宝箱（演示用：清空累计正能量与已收藏） */
+  app.collectedEnergy = 0;
+  app.ownedCollectibles = [];
+  app.chestOpen = false;
+  localStorage.removeItem(ENERGY_KEY);
+  localStorage.removeItem(OWNED_KEY);
+  clickTimers.forEach(t => clearTimeout(t));
+  clickTimers = [];
+  if (rewardTimer) clearTimeout(rewardTimer);
+  render();
+});
+
+$('btnForceBusy').addEventListener('click', () => {
+  app.robotState = 'busy';
+  app.enterPhase = 'busy';
+  app.panelVisible = false;
+  app.submitting = false;
+  app.blinkActive = false;
+  app.patActive = false;
+  app.suckAnim = false;
+  app.floatEnergy = false;
+  clickTimers.forEach(t => clearTimeout(t));
+  clickTimers = [];
+  render();
+});
+
+// 一键重新显示引导弹窗(调试用)
+$('btnShowGuide').addEventListener('click', () => {
+  localStorage.removeItem(GUIDE_KEY);
+  app.showGuide = true;
+  render();
+});
+
+$('btnTriggerClick').addEventListener('click', () => {
+  onTapRobot();
+});
+
+/* 情绪快捷按钮 + 自定义输入 */
+document.querySelectorAll('.debug [data-text]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    app.inputText = btn.getAttribute('data-text');
+    panelInput.value = app.inputText;
+    render();
+    if (!app.panelVisible && app.enterPhase === 'busy') {
+      onTapRobot();
+    }
+  });
+});
+
+const freeText = $('freeText');
+freeText.addEventListener('input', (e) => {
+  app.inputText = e.target.value;
+  panelInput.value = app.inputText;
+  render();
+});
+
+/* ============================================================
+   启动
+   ============================================================ */
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>坏情绪回收站 · 浅色治愈风重做 · preview_light_v1</title>
+<style>
+  :root{
+    /* ===== 浅色治愈风设计令牌（与开发蓝本一致） ===== */
+    --bg:#F7F4EE; --bg-top:#FBF8F2; --bg-bottom:#F1ECE2;
+    --card:#FFFFFF; --card-soft:#FBF9F4;
+    --primary:#94A89A; --primary-deep:#7A9082; --primary-soft:#E5EDE8;
+    --accent:#E89B7D; --accent-soft:#FBEDE6;
+    --text:#3D3A34; --text-2:#8C887E; --text-3:#B5B0A4;
+    --line:#ECE7DD;
+    --shadow:0 8px 24px rgba(148,168,154,.14);
+    --shadow-sm:0 3px 10px rgba(148,168,154,.10);
+    /* 情绪柔和色 */
+    --emo-anx:#7E9BE8; --emo-sad:#F58CB0; --emo-str:#F5C95B;
+    --emo-ang:#E88A7A; --emo-lon:#D2A6A3; --emo-los:#C2A97E;
+    --r-lg:22px; --r-md:16px; --r-sm:12px;
+    --safe-t:44px; --safe-b:34px;
+    --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:var(--font);color:var(--text);background:#E9E4DA;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;
+    padding:24px 0;
+  }
+  /* 手机外框 */
+  .phone{
+    width:390px;height:844px;background:var(--bg);border-radius:46px;
+    box-shadow:0 30px 70px rgba(80,70,55,.30), inset 0 0 0 10px #fff, inset 0 0 0 12px #e7e1d6;
+    position:relative;overflow:hidden;display:flex;flex-direction:column;
+  }
+  /* 状态栏 */
+  .statusbar{
+    height:var(--safe-t);display:flex;align-items:center;justify-content:space-between;
+    padding:0 26px;font-size:14px;font-weight:700;color:var(--text);flex-shrink:0;z-index:5;
+  }
+  .statusbar .icons{display:flex;gap:6px;align-items:center;font-size:12px;}
+  /* 屏幕容器 */
+  .stage{position:relative;flex:1;overflow:hidden;}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;
+    background:linear-gradient(180deg,var(--bg-top) 0%,var(--bg) 40%,var(--bg-bottom) 100%);
+    opacity:0;visibility:hidden;transform:translateX(12px);transition:opacity .28s,transform .28s,visibility .28s;}
+  .screen.active{opacity:1;visibility:visible;transform:none;}
+  .scroll{flex:1;overflow-y:auto;padding:0 20px 96px;}
+  .scroll::-webkit-scrollbar{display:none;}
+
+  /* ===== 通用组件 ===== */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 14px;}
+  .topbar h1{font-size:20px;font-weight:800;letter-spacing:.5px;}
+  .pill{background:var(--card);border:1px solid var(--line);border-radius:999px;
+    padding:8px 14px;font-size:13px;font-weight:700;color:var(--text-2);box-shadow:var(--shadow-sm);}
+  .card{background:var(--card);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow);}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;height:52px;border-radius:999px;
+    font-size:16px;font-weight:800;letter-spacing:1px;border:none;cursor:pointer;}
+  .btn-primary{background:linear-gradient(135deg,#A8BCAE,#8AA294);color:#fff;box-shadow:0 8px 18px rgba(122,144,130,.35);}
+  .btn-accent{background:linear-gradient(135deg,#F0AE92,#E2886A);color:#fff;box-shadow:0 8px 18px rgba(226,136,106,.35);}
+  .btn:active{transform:scale(.97);}
+  .tag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;}
+  .tag-sage{background:var(--primary-soft);color:var(--primary-deep);}
+  .tag-peach{background:var(--accent-soft);color:#C9704F;}
+
+  /* ===== 底部 Tab ===== */
+  .tabbar{position:absolute;left:0;right:0;bottom:0;height:calc(64px + var(--safe-b));
+    background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+    display:flex;padding:8px 0 var(--safe-b);z-index:30;}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;
+    color:var(--text-3);font-weight:700;cursor:pointer;}
+  .tab .ico{width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+  .tab.on{color:var(--primary-deep);}
+
+  /* ===== 首页 / 主场景 ===== */
+  .scene{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;
+    background:linear-gradient(180deg,#FBF8F2 0%,#F4EFE6 55%,#ECE6D8 100%);overflow:hidden;}
+  .scene .hill{position:absolute;bottom:0;left:-10%;width:120%;height:300px;
+    background:radial-gradient(120% 100% at 50% 100%,#DCE9DF 0%,#E9F0EA 60%,transparent 70%);
+    border-radius:50% 50% 0 0;}
+  .cloud{position:absolute;background:#fff;border-radius:999px;opacity:.8;filter:blur(.3px);}
+  .scene-copy{position:absolute;top:30px;text-align:center;z-index:3;}
+  .scene-copy .en{font-size:12px;letter-spacing:3px;color:var(--primary-deep);font-weight:700;}
+  .scene-copy .zh{margin-top:4px;font-size:15px;color:var(--text-2);font-weight:600;}
+  .nova-wrap{position:absolute;bottom:170px;z-index:4;cursor:pointer;transition:transform .2s;}
+  .nova-wrap:active{transform:scale(.95);}
+  .tap-hint{position:absolute;bottom:120px;z-index:4;background:rgba(255,255,255,.9);
+    border:1.5px solid var(--primary);color:var(--primary-deep);font-weight:800;font-size:14px;
+    padding:10px 20px;border-radius:999px;box-shadow:var(--shadow-sm);animation:bob 2.2s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  .asset-hud{position:absolute;top:calc(var(--safe-t) + 6px);right:18px;z-index:6;
+    display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);
+    border-radius:999px;padding:7px 12px;box-shadow:var(--shadow-sm);cursor:pointer;}
+  .asset-hud .num{font-weight:800;color:var(--accent);font-size:15px;}
+
+  /* Nova 机器人（浅色版 SVG） */
+  .nova{width:150px;height:170px;}
+
+  /* ===== 投放输入底部弹层 ===== */
+  .sheet-mask{position:absolute;inset:0;background:rgba(61,58,52,.35);z-index:40;
+    opacity:0;visibility:hidden;transition:.3s;}
+  .sheet-mask.show{opacity:1;visibility:visible;}
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:41;background:var(--card);
+    border-radius:28px 28px 0 0;padding:18px 20px calc(20px + var(--safe-b));
+    transform:translateY(100%);transition:transform .34s cubic-bezier(.22,.9,.3,1);box-shadow:0 -10px 40px rgba(80,70,55,.18);}
+  .sheet.show{transform:none;}
+  .sheet .handle{width:40px;height:5px;background:var(--line);border-radius:5px;margin:0 auto 16px;}
+  .sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+  .mini-nova{width:46px;height:46px;border-radius:14px;background:var(--primary-soft);
+    display:flex;align-items:center;justify-content:center;}
+  .sheet-head .q{font-size:15px;font-weight:700;color:var(--text);}
+  .sheet-head .q small{display:block;font-size:12px;color:var(--text-2);font-weight:500;margin-top:2px;}
+  .input-box{background:var(--card-soft);border:1.5px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px;}
+  .input-box textarea{width:100%;border:none;background:transparent;resize:none;height:74px;
+    font-family:var(--font);font-size:15px;color:var(--text);outline:none;}
+  .input-box textarea::placeholder{color:var(--text-3);}
+  .mood-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .mood{flex:1;min-width:54px;text-align:center;font-size:12px;font-weight:700;padding:9px 4px;
+    border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--text-2);cursor:pointer;}
+  .mood.sel{color:#fff;border-color:transparent;}
+  .voice{display:flex;align-items:center;justify-content:center;gap:8px;height:46px;border-radius:14px;
+    background:var(--card-soft);border:1.5px solid var(--line);color:var(--text-2);font-weight:700;font-size:14px;margin-bottom:14px;}
+  .voice.rec{background:var(--primary-soft);color:var(--primary-deep);border-color:var(--primary);}
+
+  /* ===== 回收成功覆盖层 ===== */
+  .success{position:absolute;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;background:linear-gradient(180deg,#FBF8F2,#EEE9DD);opacity:0;visibility:hidden;transition:.32s;}
+  .success.show{opacity:1;visibility:visible;}
+  .success .glow{width:200px;height:200px;border-radius:50%;
+    background:radial-gradient(circle,rgba(148,168,154,.30),transparent 65%);
+    display:flex;align-items:center;justify-content:center;animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 30px rgba(148,168,154,.3)}50%{box-shadow:0 0 60px rgba(148,168,154,.55)}}
+  .success h2{margin-top:18px;font-size:24px;font-weight:900;color:var(--primary-deep);}
+  .success .sub{margin-top:6px;font-size:14px;color:var(--text-2);}
+  /* 徽章奖励卡 */
+  .badge-card{margin-top:24px;background:var(--card);border-radius:18px;padding:16px;
+    display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);width:280px;}
+  .badge-medal{width:64px;height:64px;border-radius:50%;background:var(--primary-soft);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    box-shadow:inset 0 0 0 3px var(--primary),0 4px 12px rgba(148,168,154,.3);}
+  .badge-info .k{font-size:11px;color:var(--primary-deep);font-weight:700;}
+  .badge-info .n{font-size:15px;font-weight:800;margin:2px 0;}
+  .badge-info .nt{font-size:11px;color:var(--text-3);}
+  .energy-pop{margin-top:18px;font-size:14px;font-weight:800;color:var(--accent);}
+
+  /* ===== 我的 / 数字资产 ===== */
+  .profile{display:flex;align-items:center;gap:14px;margin:8px 0 18px;}
+  .avatar{width:62px;height:62px;border-radius:20px;background:linear-gradient(135deg,#A8BCAE,#8AA294);
+    display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;box-shadow:var(--shadow-sm);}
+  .profile .name{font-size:19px;font-weight:800;}
+  .profile .meta{font-size:13px;color:var(--text-2);margin-top:3px;}
+  .points-card{background:linear-gradient(135deg,#FBF4EC,#F6E9DD);border-radius:var(--r-lg);
+    padding:18px;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .points-card .lab{font-size:13px;color:#9A7355;font-weight:700;}
+  .points-card .val{font-size:30px;font-weight:900;color:#C9704F;margin-top:2px;}
+  .points-card .val small{font-size:14px;font-weight:700;margin-left:4px;}
+  .stats{display:flex;gap:10px;margin-bottom:18px;}
+  .stat{flex:1;background:var(--card);border-radius:var(--r-md);padding:14px 10px;text-align:center;box-shadow:var(--shadow-sm);}
+  .stat .v{font-size:20px;font-weight:900;color:var(--primary-deep);}
+  .stat .l{font-size:11px;color:var(--text-2);margin-top:3px;}
+  .sec-title{display:flex;align-items:center;justify-content:space-between;margin:6px 4px 12px;}
+  .sec-title .t{font-size:15px;font-weight:800;}
+  .wall{display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-start;}
+  .medal{width:calc(33.333% - 8px);aspect-ratio:1/1;border-radius:18px;background:var(--card);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    box-shadow:var(--shadow-sm);cursor:pointer;border:1.5px solid var(--line);}
+  .medal .ring{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    box-shadow:inset 0 0 0 3px currentColor;}
+  .medal .nm{font-size:11px;font-weight:700;color:var(--text);}
+  .medal.locked{opacity:.5;filter:grayscale(.5);}
+  .note{margin-top:16px;background:var(--primary-soft);border-radius:var(--r-md);padding:13px 15px;
+    font-size:12px;color:var(--primary-deep);font-weight:600;line-height:1.5;display:flex;gap:8px;align-items:flex-start;}
+
+  /* ===== 兑换商家积分 ===== */
+  .redeem-tip{background:var(--accent-soft);border-radius:var(--r-md);padding:13px 15px;margin-bottom:16px;
+    font-size:13px;color:#C9704F;font-weight:700;display:flex;align-items:center;gap:8px;}
+  .badge-grid{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
+  .pick{width:calc(33.333% - 8px);aspect-ratio:1/1;border-radius:18px;background:var(--card);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    box-shadow:var(--shadow-sm);cursor:pointer;border:2px solid var(--line);position:relative;transition:.15s;}
+  .pick.sel{border-color:var(--primary);background:var(--primary-soft);}
+  .pick .ring{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 3px currentColor;}
+  .pick .nm{font-size:11px;font-weight:700;}
+  .pick .tick{position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;background:var(--primary);
+    color:#fff;font-size:12px;display:none;align-items:center;justify-content:center;}
+  .pick.sel .tick{display:flex;}
+  .merchant{background:var(--card);border-radius:var(--r-md);padding:14px;margin-bottom:12px;box-shadow:var(--shadow-sm);
+    display:flex;align-items:center;gap:12px;}
+  .merchant .mico{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+  .merchant .mi{flex:1;}
+  .merchant .mn{font-size:14px;font-weight:800;}
+  .merchant .md{font-size:12px;color:var(--text-2);margin-top:2px;}
+  .merchant .mc{font-size:13px;font-weight:800;color:var(--accent);}
+  .summary{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    margin:8px -20px -96px;padding-left:20px;padding-right:20px;}
+  .summary .txt{font-size:13px;color:var(--text-2);font-weight:700;}
+  .summary .txt b{color:var(--primary-deep);}
+
+  /* ===== 回收记录 ===== */
+  .rec{background:var(--card);border-radius:var(--r-md);padding:14px 16px;margin-bottom:12px;box-shadow:var(--shadow-sm);
+    display:flex;align-items:center;gap:13px;}
+  .rec .dot{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    font-size:20px;flex-shrink:0;}
+  .rec .ri{flex:1;}
+  .rec .rt{font-size:14px;font-weight:800;}
+  .rec .rd{font-size:12px;color:var(--text-2);margin-top:2px;}
+  .rec .rb{text-align:right;}
+  .rec .rb .p{font-size:14px;font-weight:800;color:var(--accent);}
+  .rec .rb .b{font-size:11px;color:var(--text-3);margin-top:2px;}
+
+  /* 通用弹层：徽章详情 */
+  .modal-mask{position:absolute;inset:0;background:rgba(61,58,52,.4);z-index:60;display:none;align-items:center;justify-content:center;}
+  .modal-mask.show{display:flex;}
+  .modal{width:78%;background:var(--card);border-radius:24px;padding:26px 22px;text-align:center;box-shadow:var(--shadow);}
+  .modal .m-ring{width:110px;height:110px;border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;
+    box-shadow:inset 0 0 0 4px currentColor,0 0 30px rgba(148,168,154,.4);}
+  .modal .m-n{font-size:18px;font-weight:900;}
+  .modal .m-s{font-size:12px;color:var(--primary-deep);font-weight:700;margin-top:6px;}
+  .modal .m-story{font-size:12px;color:var(--text-2);line-height:1.6;margin-top:14px;}
+  .modal .m-tag{display:inline-block;margin-top:16px;background:var(--primary-soft);color:var(--primary-deep);
+    font-size:11px;font-weight:800;padding:7px 16px;border-radius:999px;}
+
+  /* Toast */
+  .toast{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%) scale(.9);z-index:80;
+    background:rgba(61,58,52,.92);color:#fff;font-size:14px;font-weight:700;padding:12px 22px;border-radius:14px;
+    opacity:0;visibility:hidden;transition:.25s;}
+  .toast.show{opacity:1;visibility:visible;transform:translate(-50%,-50%) scale(1);}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="statusbar">
+    <span>9:41</span>
+    <span class="icons">●●● 5G ▱ 100%</span>
+  </div>
+
+  <div class="stage">
+    <!-- ===================== 首页 / 主场景 ===================== -->
+    <section class="screen scene active" id="home">
+      <div class="scene">
+        <div class="hill"></div>
+        <div class="cloud" style="width:70px;height:26px;top:90px;left:40px;"></div>
+        <div class="cloud" style="width:54px;height:20px;top:130px;right:46px;"></div>
+        <div class="asset-hud" onclick="go('mine')">
+          <span style="font-size:16px;">🌿</span>
+          <span class="num">1280</span>
+        </div>
+        <div class="scene-copy">
+          <div class="en">LIGHT UP YOUR MOOD</div>
+          <div class="zh">点亮情绪 · 轻轻放下</div>
+        </div>
+        <div class="nova-wrap" onclick="openInput()">
+          <!-- 浅色 Nova 机器人 -->
+          <svg class="nova" viewBox="0 0 150 170">
+            <defs>
+              <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#FBF8F2"/><stop offset="1" stop-color="#E9E4D8"/>
+              </linearGradient>
+            </defs>
+            <ellipse cx="75" cy="158" rx="42" ry="8" fill="rgba(148,168,154,.18)"/>
+            <rect x="42" y="96" width="66" height="52" rx="22" fill="url(#body)" stroke="#94A89A" stroke-width="3"/>
+            <rect x="36" y="44" width="78" height="62" rx="26" fill="url(#body)" stroke="#94A89A" stroke-width="3"/>
+            <line x1="75" y1="20" x2="75" y2="44" stroke="#94A89A" stroke-width="3"/>
+            <circle cx="75" cy="16" r="7" fill="#E89B7D"/>
+            <circle cx="75" cy="16" r="7" fill="none" stroke="#fff" stroke-width="2"/>
+            <circle cx="60" cy="72" r="7" fill="#5C6760"/>
+            <circle cx="90" cy="72" r="7" fill="#5C6760"/>
+            <circle cx="60" cy="70" r="2.4" fill="#fff"/><circle cx="90" cy="70" r="2.4" fill="#fff"/>
+            <circle cx="52" cy="84" r="5" fill="#F2B8A8" opacity=".8"/>
+            <circle cx="98" cy="84" r="5" fill="#F2B8A8" opacity=".8"/>
+            <rect x="56" y="112" width="38" height="14" rx="7" fill="#94A89A"/>
+            <circle cx="62" cy="119" r="2" fill="#fff"/><circle cx="75" cy="119" r="2" fill="#fff"/><circle cx="88" cy="119" r="2" fill="#fff"/>
+          </svg>
+        </div>
+        <div class="tap-hint">点击 Nova，回收 emo</div>
+      </div>
+    </section>
+
+    <!-- ===================== 回收记录 ===================== -->
+    <section class="screen" id="record">
+      <div class="scroll">
+        <div class="topbar"><h1>回收记录</h1><span class="pill">共 24 次</span></div>
+        <div id="recList"></div>
+      </div>
+    </section>
+
+    <!-- ===================== 我的 / 数字资产 ===================== -->
+    <section class="screen" id="mine">
+      <div class="scroll">
+        <div class="topbar"><h1>我的</h1><span class="pill">数字资产</span></div>
+        <div class="profile">
+          <div class="avatar">🌱</div>
+          <div><div class="name">小满</div><div class="meta">已回收 128 次 · 连续 7 天</div></div>
+        </div>
+        <div class="points-card">
+          <div>
+            <div class="lab">情绪养分余额</div>
+            <div class="val">1280<small>分</small></div>
+          </div>
+          <div class="btn btn-accent" style="height:42px;padding:0 18px;font-size:14px;" onclick="go('redeem')">去兑换</div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="v">24</div><div class="l">徽章收藏</div></div>
+          <div class="stat"><div class="v">8</div><div class="l">已兑积分</div></div>
+          <div class="stat"><div class="v">7</div><div class="l">连续天数</div></div>
+        </div>
+        <div class="sec-title"><span class="t">徽章墙</span><span class="pill" style="padding:5px 12px;font-size:12px;">查看全部</span></div>
+        <div class="wall" id="wall"></div>
+        <div class="note">🌿 徽章是你的数字资产，永久保存，<b>不可买卖、不可转让</b>。每次投放都会铸一枚专属徽章，留作纪念。</div>
+      </div>
+    </section>
+
+    <!-- ===================== 兑换商家积分 ===================== -->
+    <section class="screen" id="redeem">
+      <div class="scroll">
+        <div class="topbar"><h1>兑换商家积分</h1><span class="pill">1 徽章 = 100 分</span></div>
+        <div class="redeem-tip">💡 每枚徽章可兑 100 商家积分，积分仅用于合作商家福利抵扣。</div>
+        <div class="sec-title"><span class="t">选择要兑换的徽章</span><span class="pill" id="pickCount" style="padding:5px 12px;font-size:12px;">已选 0 枚</span></div>
+        <div class="badge-grid" id="pickGrid"></div>
+        <div class="sec-title"><span class="t">合作商家权益</span></div>
+        <div class="merchant"><div class="mico">🏪</div><div class="mi"><div class="mn">便利蜂</div><div class="md">100 分 = 1 元代金券</div></div><div class="mc">100分</div></div>
+        <div class="merchant"><div class="mico">📚</div><div class="mi"><div class="mn">校园书店</div><div class="md">100 分 = 95 折券</div></div><div class="mc">100分</div></div>
+        <div class="merchant"><div class="mico">🎬</div><div class="mi"><div class="mn">视频会员</div><div class="md">200 分 = 3 天体验卡</div></div><div class="mc">200分</div></div>
+      </div>
+      <div class="summary">
+        <div class="txt">已选 <b id="sumCount">0</b> 枚 · 可兑 <b id="sumPoint">0</b> 分</div>
+        <div class="btn btn-primary" style="height:46px;padding:0 22px;font-size:15px;" onclick="doRedeem()">确认兑换</div>
+      </div>
+    </section>
+
+    <!-- ===================== 投放输入弹层 ===================== -->
+    <div class="sheet-mask" id="inputMask" onclick="closeInput()"></div>
+    <div class="sheet" id="inputSheet">
+      <div class="handle"></div>
+      <div class="sheet-head">
+        <div class="mini-nova">
+          <svg width="28" height="28" viewBox="0 0 150 170"><rect x="42" y="96" width="66" height="52" rx="22" fill="#94A89A"/><rect x="36" y="44" width="78" height="62" rx="26" fill="#FBF8F2" stroke="#94A89A" stroke-width="4"/><circle cx="60" cy="72" r="7" fill="#5C6760"/><circle cx="90" cy="72" r="7" fill="#5C6760"/><circle cx="75" cy="16" r="7" fill="#E89B7D"/></svg>
+        </div>
+        <div class="q">把坏心情交给 Nova 就好～<small>写完它会变成一枚专属徽章</small></div>
+      </div>
+      <div class="input-box">
+        <textarea id="moodText" placeholder="写下或说出你的坏心情……（例如：今天被甲方改了八版稿子）"></textarea>
+      </div>
+      <div class="mood-row" id="moodRow"></div>
+      <div class="voice" id="voiceBtn" onmousedown="startVoice()" onmouseup="endVoice()" ontouchstart="startVoice()" ontouchend="endVoice()">
+        <span>🎙️</span><span id="voiceTxt">按住说话（演示）</span>
+      </div>
+      <div class="btn btn-primary" onclick="confirmRecycle()">确认回收</div>
+    </div>
+
+    <!-- ===================== 回收成功覆盖层 ===================== -->
+    <div class="success" id="success">
+      <div class="glow">
+        <svg width="120" height="120" viewBox="0 0 150 170"><rect x="42" y="96" width="66" height="52" rx="22" fill="#94A89A"/><rect x="36" y="44" width="78" height="62" rx="26" fill="#FBF8F2" stroke="#94A89A" stroke-width="4"/><circle cx="60" cy="72" r="7" fill="#5C6760"/><circle cx="90" cy="72" r="7" fill="#5C6760"/><circle cx="75" cy="16" r="7" fill="#E89B7D"/></svg>
+      </div>
+      <h2>回收成功 🌿</h2>
+      <div class="sub">你的坏心情已经被温柔接住</div>
+      <div class="badge-card">
+        <div class="badge-medal"><span style="font-size:30px;">😟</span></div>
+        <div class="badge-info">
+          <div class="k">获得专属徽章 · 已存入数字资产</div>
+          <div class="n">焦虑 · 回收徽章 #001</div>
+          <div class="nt">永久保存 · 不可买卖转让</div>
+        </div>
+      </div>
+      <div class="energy-pop">+20 情绪养分已收集</div>
+      <div style="margin-top:26px;display:flex;gap:12px;">
+        <div class="btn btn-accent" style="padding:0 20px;font-size:14px;height:46px;" onclick="go('mine')">看看我的徽章</div>
+        <div class="btn btn-primary" style="padding:0 20px;font-size:14px;height:46px;" onclick="closeSuccess()">继续回收</div>
+      </div>
+    </div>
+
+    <!-- ===================== 徽章详情弹层 ===================== -->
+    <div class="modal-mask" id="badgeModal" onclick="this.classList.remove('show')">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="m-ring" id="mRing"><span id="mEmoji" style="font-size:48px;">😟</span></div>
+        <div class="m-n" id="mName">焦虑 · 回收徽章 #001</div>
+        <div class="m-s" id="mState">已点亮 · 永久收藏</div>
+        <div class="m-story" id="mStory">每一次焦虑都被你温柔地放下，这枚徽章记录着你与自己和解的瞬间。</div>
+        <div class="m-tag">数字藏品 · 不可交易不可转让</div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- ===================== 底部 Tab ===================== -->
+    <div class="tabbar">
+      <div class="tab on" onclick="go('home')"><span class="ico">🏠</span>首页</div>
+      <div class="tab" onclick="go('record')"><span class="ico">📜</span>记录</div>
+      <div class="tab" onclick="go('mine')"><span class="ico">🌿</span>我的</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ---------- 路由 ---------- */
+  function go(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+    const map={home:0,record:1,mine:2};
+    if(map[id]!==undefined) document.querySelectorAll('.tab')[map[id]].classList.add('on');
+  }
+  /* ---------- 投放弹层 ---------- */
+  function openInput(){document.getElementById('inputMask').classList.add('show');document.getElementById('inputSheet').classList.add('show');}
+  function closeInput(){document.getElementById('inputMask').classList.remove('show');document.getElementById('inputSheet').classList.remove('show');}
+  /* ---------- 语音（演示） ---------- */
+  function startVoice(){document.getElementById('voiceBtn').classList.add('rec');document.getElementById('voiceTxt').textContent='正在倾听……';}
+  function endVoice(){document.getElementById('voiceBtn').classList.remove('rec');document.getElementById('voiceTxt').textContent='按住说话（演示）';}
+  /* ---------- 确认回收 → 成功 ---------- */
+  function confirmRecycle(){
+    var t=document.getElementById('moodText').value.trim();
+    if(!t){document.getElementById('moodText').focus();return;}
+    closeInput();
+    setTimeout(()=>{document.getElementById('success').classList.add('show');},260);
+  }
+  function closeSuccess(){document.getElementById('success').classList.remove('show');go('home');}
+
+  /* ---------- 情绪快捷标签 ---------- */
+  var moods=[['焦虑','😟','--emo-anx'],['难过','😢','--emo-sad'],['压力','😣','--emo-str'],['愤怒','😡','--emo-ang'],['孤独','🥀','--emo-lon'],['迷茫','🌫️','--emo-los']];
+  var moodRow=document.getElementById('moodRow');
+  moods.forEach((m,i)=>{
+    var el=document.createElement('div');el.className='mood';el.textContent=m[1]+' '+m[0];
+    el.style.color='var('+m[2]+')';
+    el.onclick=function(){document.querySelectorAll('.mood').forEach(x=>x.classList.remove('sel'));
+      this.classList.add('sel');this.style.background='var('+m[2]+')';this.style.color='#fff';};
+    moodRow.appendChild(el);
+  });
+
+  /* ---------- 我的·徽章墙 ---------- */
+  var myBadges=[
+    ['😟','焦虑 · 回收徽章','--emo-anx',false],['😢','难过 · 回收徽章','--emo-sad',false],
+    ['😣','压力 · 回收徽章','--emo-str',false],['😡','愤怒 · 回收徽章','--emo-ang',false],
+    ['🥀','孤独 · 回收徽章','--emo-lon',false],['🌫️','迷茫 · 回收徽章','--emo-los',false],
+    ['😌','平静 · 回收徽章','--emo-anx',true],['🌟','星光 · 回收徽章','--emo-str',true]
+  ];
+  var wall=document.getElementById('wall');
+  myBadges.forEach(b=>{
+    var el=document.createElement('div');el.className='medal'+(b[3]?' locked':'');
+    el.innerHTML='<div class="ring" style="color:var('+b[2]+');background:var('+b[2]+');opacity:.18"><span style="font-size:24px;">'+b[0]+'</span></div><div class="nm">'+(b[3]?'待解锁':b[1].split(' · ')[0])+'</div>';
+    if(!b[3]) el.onclick=()=>showBadge(b);
+    wall.appendChild(el);
+  });
+
+  /* ---------- 兑换·可选徽章 ---------- */
+  var pickBadges=[['😟','焦虑','--emo-anx'],['😢','难过','--emo-sad'],['😣','压力','--emo-str'],['😡','愤怒','--emo-ang'],['🥀','孤独','--emo-lon'],['🌟','星光','--emo-str']];
+  var pickGrid=document.getElementById('pickGrid');var picked=0;
+  pickBadges.forEach(b=>{
+    var el=document.createElement('div');el.className='pick';
+    el.innerHTML='<div class="ring" style="color:var('+b[2]+');background:var('+b[2]+');opacity:.18"><span style="font-size:22px;">'+b[0]+'</span></div><div class="nm">'+b[1]+'徽章</div><div class="tick">✓</div>';
+    el.onclick=function(){this.classList.toggle('sel');picked=document.querySelectorAll('.pick.sel').length;
+      document.getElementById('pickCount').textContent='已选 '+picked+' 枚';
+      document.getElementById('sumCount').textContent=picked;
+      document.getElementById('sumPoint').textContent=picked*100;};
+    pickGrid.appendChild(el);
+  });
+  function doRedeem(){
+    if(picked===0){toast('请先选择要兑换的徽章');return;}
+    toast('已兑换 '+picked*100+' 积分，去合作商家抵扣吧');
+  }
+
+  /* ---------- 回收记录 ---------- */
+  var recs=[
+    ['😟','焦虑','被甲方改了八版稿子','09-15 14:20','+20','#001','--emo-anx'],
+    ['😢','难过','好朋友突然疏远了我','09-14 21:08','+20','#002','--emo-sad'],
+    ['😣','压力','期中考试还有三天','09-13 23:40','+20','#003','--emo-str'],
+    ['😡','愤怒','外卖迟到一小时','09-12 12:30','+20','#004','--emo-ang'],
+    ['🥀','孤独','一个人过周末','09-11 19:55','+20','#005','--emo-lon']
+  ];
+  var rl=document.getElementById('recList');
+  recs.forEach(r=>{
+    var el=document.createElement('div');el.className='rec';
+    el.innerHTML='<div class="dot" style="background:var('+r[6]+');opacity:.18;color:var('+r[6]+')">'+r[0]+'</div>'+
+      '<div class="ri"><div class="rt">'+r[2]+'</div><div class="rd">'+r[0]+' '+r[1]+' · '+r[3]+'</div></div>'+
+      '<div class="rb"><div class="p">'+r[4]+'</div><div class="b">徽章 '+r[5]+'</div></div>';
+    rl.appendChild(el);
+  });
+
+  /* ---------- 徽章详情 ---------- */
+  function showBadge(b){
+    document.getElementById('mEmoji').textContent=b[0];
+    document.getElementById('mName').textContent=b[1]+' #001';
+    document.getElementById('mRing').style.color='var('+b[2]+')';
+    document.getElementById('mRing').style.background='var('+b[2]+')';
+    document.getElementById('mRing').style.opacity='.18';
+    document.getElementById('badgeModal').classList.add('show');
+  }
+
+  /* ---------- Toast ---------- */
+  var tt;
+  function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+    clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1800);}
+</script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>徽章预览 · 微光结晶</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #1d2330 0%, #0a0c10 100%);
+    color: #cfd3d8;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 420px; margin: 0 auto; padding: 32px 20px 60px; }
+
+  h1 { font-size: 22px; font-weight: 700; color: #e8d5b8; margin: 0 0 6px; letter-spacing: 1px; }
+  .subtitle { font-size: 13px; color: #8a92a0; margin-bottom: 28px; line-height: 1.5; }
+
+  .section {
+    background: rgba(20, 24, 32, .85);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 18px; padding: 20px; margin-bottom: 18px;
+  }
+  .section-title { font-size: 14px; color: #b3a684; letter-spacing: .5px; margin-bottom: 14px; }
+
+  /* 尺寸矩阵：无底色，纯净展示 */
+  .sizes { display: flex; align-items: flex-end; gap: 22px; }
+  .size-cell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .size-cell img { display: block; filter: drop-shadow(0 4px 10px rgba(127,212,166,.25)); }
+  .size-label { font-size: 11px; color: #6b7280; }
+
+  /* 小程序卡片：中性浅底芯片，不抢徽章 */
+  .minipro-card {
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 14px; padding: 14px 16px;
+  }
+  .minipro-icon {
+    width: 56px; height: 56px; border-radius: 12px;
+    background: rgba(255, 255, 255, .04);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
+  }
+  .minipro-icon img { width: 44px; height: 44px; }
+  .minipro-info { flex: 1; }
+  .minipro-name { font-size: 15px; font-weight: 600; color: #e8e6e0; margin-bottom: 4px; }
+  .minipro-desc { font-size: 12px; color: #8a92a0; }
+  .minipro-btn {
+    padding: 7px 14px; border-radius: 999px;
+    background: rgba(127, 212, 166, .18); color: #7fd4a6;
+    font-size: 12px; font-weight: 600; border: 1px solid rgba(127, 212, 166, .3);
+  }
+
+  /* 成就弹窗：3D 光晕环绕 */
+  .achieve-card {
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    background: linear-gradient(180deg, rgba(127, 212, 166, .12) 0%, rgba(20, 24, 32, .4) 100%);
+    border: 1px solid rgba(127, 212, 166, .25);
+    border-radius: 18px; padding: 28px 20px 22px;
+  }
+  .badge-stage {
+    position: relative; width: 110px; height: 110px; margin: 0 auto 16px;
+    perspective: 700px;
+  }
+  .badge-halo {
+    position: absolute; inset: -16px; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      rgba(127,212,166,0) 0deg,
+      rgba(127,212,166,.7) 50deg,
+      rgba(190,248,216,.95) 90deg,
+      rgba(127,212,166,.7) 130deg,
+      rgba(127,212,166,0) 210deg,
+      rgba(127,212,166,0) 360deg);
+    filter: blur(8px); opacity: .9;
+    animation: halo-spin 5s linear infinite;
+  }
+  .badge-glow {
+    position: absolute; inset: -6px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(127,212,166,.4) 0%, rgba(127,212,166,0) 70%);
+    animation: glow-breathe 3.4s ease-in-out infinite;
+  }
+  .badge-tilt {
+    position: relative; width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    animation: badge-tilt 8s ease-in-out infinite;
+  }
+  .badge-float {
+    width: 100%; height: 100%; display: block;
+    filter: drop-shadow(0 6px 14px rgba(127,212,166,.45));
+    animation: badge-float 4s ease-in-out infinite;
+  }
+  @keyframes halo-spin { to { transform: rotate(360deg); } }
+  @keyframes glow-breathe { 0%,100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.06); } }
+  @keyframes badge-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes badge-tilt { 0%,100% { transform: rotateY(-15deg) rotateX(7deg); } 50% { transform: rotateY(15deg) rotateX(-7deg); } }
+
+  .achieve-title { font-size: 17px; font-weight: 700; color: #e8e6e0; margin-bottom: 4px; }
+  .achieve-desc { font-size: 13px; color: #8a92a0; line-height: 1.55; }
+  .achieve-tag {
+    margin-top: 14px; padding: 5px 12px; border-radius: 999px;
+    background: rgba(127, 212, 166, .15); color: #7fd4a6;
+    font-size: 11px; font-weight: 600; border: 1px solid rgba(127, 212, 166, .25);
+  }
+
+  /* 藏品网格 */
+  .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .gallery-item {
+    display: flex; flex-direction: column; align-items: center;
+    background: rgba(255, 255, 255, .03); border-radius: 14px; padding: 14px 8px 12px;
+    border: 1px solid rgba(255, 255, 255, .06);
+  }
+  .gallery-item.owned { border-color: rgba(127, 212, 166, .35); background: rgba(127, 212, 166, .08); }
+  .gallery-item img { width: 44px; height: 44px; margin-bottom: 8px; filter: drop-shadow(0 3px 8px rgba(127,212,166,.25)); }
+  .gallery-name { font-size: 12px; color: #e8e6e0; margin-bottom: 2px; }
+  .gallery-cost { font-size: 11px; color: #7fd4a6; }
+  .gallery-lock { font-size: 11px; color: #6b7280; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .badge-halo, .badge-glow, .badge-tilt, .badge-float { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>微光结晶</h1>
+    <div class="subtitle">不规则晶体，内部透出淡薄荷绿微光，粒子在其中缓缓流动。简约造型，治愈轻科幻。<br>徽章纯透明无背景，弹窗展示时光晕环绕。</div>
+
+    <div class="section">
+      <div class="section-title">多尺寸缩放效果（无底色纯净展示）</div>
+      <div class="sizes">
+        <div class="size-cell"><img src="images/glowing_crystal_badge.png" width="128" height="128" alt="128px" /><span class="size-label">128px</span></div>
+        <div class="size-cell"><img src="images/glowing_crystal_badge.png" width="64" height="64" alt="64px" /><span class="size-label">64px</span></div>
+        <div class="size-cell"><img src="images/glowing_crystal_badge.png" width="48" height="48" alt="48px" /><span class="size-label">48px</span></div>
+        <div class="size-cell"><img src="images/glowing_crystal_badge.png" width="32" height="32" alt="32px" /><span class="size-label">32px</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">小程序卡片展示</div>
+      <div class="minipro-card">
+        <div class="minipro-icon"><img src="images/glowing_crystal_badge.png" alt="微光结晶" /></div>
+        <div class="minipro-info">
+          <div class="minipro-name">微光结晶</div>
+          <div class="minipro-desc">情绪结晶 · 轻科幻纪念</div>
+        </div>
+        <div class="minipro-btn">已解锁</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">成就弹窗（光晕环绕 3D 效果）</div>
+      <div class="achieve-card">
+        <div class="badge-stage">
+          <div class="badge-halo"></div>
+          <div class="badge-glow"></div>
+          <div class="badge-tilt">
+            <img class="badge-float" src="images/glowing_crystal_badge.png" alt="微光结晶" />
+          </div>
+        </div>
+        <div class="achieve-title">获得新徽章</div>
+        <div class="achieve-desc">你回收的情绪被封存进一枚微光结晶。<br>淡淡的薄荷绿光，在晶体里缓缓流动。</div>
+        <div class="achieve-tag">纪念 · 情绪结晶</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">数字藏品馆网格</div>
+      <div class="gallery-grid">
+        <div class="gallery-item owned">
+          <img src="images/glowing_crystal_badge.png" alt="微光结晶" />
+          <div class="gallery-name">微光结晶</div>
+          <div class="gallery-cost">已拥有</div>
+        </div>
+        <div class="gallery-item">
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#4a5560;font-size:20px;">?</div>
+          <div class="gallery-name">粒子残核</div>
+          <div class="gallery-lock">未解锁</div>
+        </div>
+        <div class="gallery-item">
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#4a5560;font-size:20px;">?</div>
+          <div class="gallery-name">能量水晶</div>
+          <div class="gallery-lock">未解锁</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

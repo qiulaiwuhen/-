@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>徽章弹窗 · 粒子残核</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; min-height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #1d2330 0%, #0a0c10 100%);
+    color: #cfd3d8; -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .wrap { max-width: 460px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 21px; font-weight: 700; color: #e8d5b8; margin: 0 0 6px; letter-spacing: 1px; }
+  .subtitle { font-size: 13px; color: #8a92a0; margin-bottom: 22px; line-height: 1.55; }
+
+  .panel {
+    background: rgba(20, 24, 32, .82);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 18px; padding: 18px; margin-bottom: 16px;
+  }
+  .panel-title { font-size: 13px; color: #b3a684; letter-spacing: .5px; margin-bottom: 10px; }
+
+  .trigger-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    flex: 1; min-width: 130px; padding: 12px 14px; border-radius: 12px;
+    font-size: 14px; font-weight: 600; cursor: pointer; text-align: center;
+    border: 1px solid rgba(127, 212, 166, .35);
+    background: rgba(127, 212, 166, .14); color: #9fe7c4;
+    transition: background .15s, transform .05s;
+  }
+  .btn:active { transform: scale(.97); background: rgba(127, 212, 166, .24); }
+  .btn.ghost { background: rgba(255,255,255,.04); color:#9aa3b2; border-color: rgba(255,255,255,.1); }
+
+  /* ===== 弹窗遮罩（深色半透明） ===== */
+  .mask {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(5, 8, 12, .78);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .35s ease;
+  }
+  .mask.show { opacity: 1; pointer-events: auto; }
+
+  /* ===== 弹窗卡片 ===== */
+  .popup {
+    position: relative; width: 300px; max-width: 86vw;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 30px 22px 24px;
+    border-radius: 22px;
+    background:
+      linear-gradient(180deg, rgba(127,212,166,.10) 0%, rgba(14,18,24,.55) 100%);
+    border: 1px solid rgba(127, 212, 166, .28);
+    box-shadow: 0 20px 60px rgba(0,0,0,.55), inset 0 0 40px rgba(127,212,166,.06);
+    transform: perspective(800px) scale(.55) translateY(20px) rotateX(18deg);
+    opacity: 0;
+    transition: transform .55s cubic-bezier(.2,.9,.25,1.05), opacity .4s ease;
+  }
+  .mask.show .popup { transform: perspective(800px) scale(1) translateY(0) rotateX(0deg); opacity: 1; }
+
+  .tag {
+    font-size: 11px; letter-spacing: 3px; color: #7fd4a6;
+    padding: 4px 12px; border-radius: 999px;
+    background: rgba(127,212,166,.12); border: 1px solid rgba(127,212,166,.25);
+    margin-bottom: 18px;
+  }
+
+  /* ===== 徽章舞台 ===== */
+  .stage { position: relative; width: 200px; height: 200px; margin: 0 auto 18px; }
+
+  /* 薄荷绿光晕：旋转 conic 光带 + 模糊 */
+  .halo {
+    position: absolute; inset: -22px; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      rgba(127,212,166,0) 0deg,
+      rgba(127,212,166,.55) 55deg,
+      rgba(190,248,216,.95) 90deg,
+      rgba(127,212,166,.55) 125deg,
+      rgba(127,212,166,0) 215deg,
+      rgba(127,212,166,0) 360deg);
+    filter: blur(10px); opacity: .85;
+    animation: halo-spin 5.5s linear infinite;
+    mix-blend-mode: screen;
+  }
+  .halo.inner { inset: 6px; opacity: .5; animation-duration: 8s; animation-direction: reverse; filter: blur(7px); }
+  @keyframes halo-spin { to { transform: rotate(360deg); } }
+
+  /* 半透明玻璃感凝聚体 */
+  .glass-orb {
+    position: absolute; inset: 28px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 36% 30%, rgba(255,255,255,.6), rgba(255,255,255,0) 42%),
+      radial-gradient(circle at 62% 72%, rgba(127,212,166,.4), rgba(10,22,30,.1) 70%),
+      radial-gradient(circle at 50% 50%, rgba(70,185,178,.28), rgba(8,16,22,.6) 82%);
+    box-shadow:
+      inset 0 0 34px rgba(127,212,166,.45),
+      inset 0 10px 22px rgba(255,255,255,.28),
+      inset 0 -14px 26px rgba(40,140,130,.35),
+      0 0 46px rgba(80,200,190,.4);
+    border: 1px solid rgba(170,245,225,.4);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+    overflow: hidden;
+  }
+  /* 玻璃高光点 */
+  .glass-orb::after {
+    content: ""; position: absolute; top: 16%; left: 22%;
+    width: 34%; height: 24%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.7), rgba(255,255,255,0) 70%);
+    filter: blur(2px); opacity: .8;
+  }
+
+  /* canvas 层：内部粒子凝聚 + 蓝绿电弧（叠加混合） */
+  .fx {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    mix-blend-mode: screen; pointer-events: none;
+  }
+
+  .badge-name { font-size: 19px; font-weight: 700; color: #eafaf2; margin-bottom: 6px; letter-spacing: 1px; }
+  .badge-desc { font-size: 12.5px; color: #9fb0a8; line-height: 1.6; margin-bottom: 20px; }
+  .badge-btn {
+    padding: 10px 26px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    background: linear-gradient(180deg, rgba(127,212,166,.9), rgba(90,190,150,.9));
+    color: #062018; border: none; cursor: pointer;
+  }
+  .badge-btn:active { transform: scale(.97); }
+
+  .close-hint { margin-top: 14px; font-size: 11px; color: #5d6b6a; }
+
+  /* 性能 HUD */
+  .hud {
+    position: fixed; right: 10px; bottom: 10px; z-index: 60;
+    font-size: 11px; color: #7fd4a6; font-variant-numeric: tabular-nums;
+    background: rgba(8,12,16,.7); border: 1px solid rgba(127,212,166,.25);
+    border-radius: 8px; padding: 6px 9px; line-height: 1.5; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>徽章弹窗 · 粒子残核</h1>
+    <p class="subtitle">半透明玻璃凝聚体 + 薄荷绿光晕 + 蓝绿电弧环绕。点下方按钮触发 3D 弹出，锁定为本套徽章的参考实现。</p>
+
+    <div class="panel">
+      <div class="panel-title">触发预览</div>
+      <div class="trigger-row">
+        <div class="btn" id="trigBtn">弹出「粒子残核」</div>
+        <div class="btn ghost" id="perfBtn">性能 HUD：开</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">效果拆解（技术美术规格）</div>
+      <p style="font-size:12.5px;line-height:1.7;color:#9fb0a8;margin:0;">
+        · 玻璃凝聚体：CSS 多层径向渐变 + inset 高光，玻璃感来自 <b>backdrop-filter</b> 微模糊。<br>
+        · 薄荷光晕：双层反向旋转 conic 光带，<b>screen</b> 混合 + 模糊，零粒子成本。<br>
+        · 粒子凝聚 + 电弧：单 canvas <b>'lighter'</b> 叠加绘制，移动端上限 36 粒子 / 6 电弧。<br>
+        · 弹窗：深色半透明遮罩 + 3D perspective 弹入，适合做成就获取弹窗。
+      </p>
+    </div>
+  </div>
+
+  <!-- 弹窗 -->
+  <div class="mask" id="mask">
+    <div class="popup" id="popup">
+      <div class="tag">BADGE UNLOCKED</div>
+      <div class="stage">
+        <div class="halo"></div>
+        <div class="halo inner"></div>
+        <div class="glass-orb"></div>
+        <canvas class="fx" id="fx"></canvas>
+      </div>
+      <div class="badge-name">粒子残核</div>
+      <div class="badge-desc">残留的能量在玻璃体内缓缓凝聚，<br>蓝绿电弧在表层游走不息。</div>
+      <button class="badge-btn" id="closeBtn">收下</button>
+      <div class="close-hint">点击遮罩任意处关闭</div>
+    </div>
+  </div>
+
+  <div class="hud" id="hud" style="display:none;">particles: 0<br>arcs: 0<br>fps: 0</div>
+
+<script>
+(function () {
+  const mask = document.getElementById('mask');
+  const popup = document.getElementById('popup');
+  const trigBtn = document.getElementById('trigBtn');
+  const perfBtn = document.getElementById('perfBtn');
+  const closeBtn = document.getElementById('closeBtn');
+  const hud = document.getElementById('hud');
+  const canvas = document.getElementById('fx');
+  const ctx = canvas.getContext('2d');
+
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let W = 200, H = 200, cx = 100, cy = 100;
+  let running = false;
+  let raf = null;
+  let lastT = 0, fpsAcc = 0, fpsCnt = 0, fpsShow = 0;
+
+  // 移动端降配
+  const isMobile = Math.min(window.innerWidth, window.innerHeight) < 540;
+  const MAX_PARTICLES = isMobile ? 36 : 70;
+  const MAX_ARCS = isMobile ? 6 : 10;
+  const ORB_R = 72;   // 凝聚体半径（用于约束粒子）
+  const ARC_R = 92;   // 电弧环绕半径
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    W = rect.width; H = rect.height; cx = W / 2; cy = H / 2;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // ---- 粒子（玻璃体内凝聚） ----
+  const particles = [];
+  function spawnParticle() {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * ORB_R * 0.92;
+    particles.push({
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r,
+      // 缓慢向心/离心漂移
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      life: 0, max: 90 + Math.random() * 80,
+      size: 0.8 + Math.random() * 1.8,
+      hue: 158 + Math.random() * 26,   // 薄荷~蓝绿
+      seed: Math.random() * 6.28
+    });
+  }
+  function updateParticles() {
+    while (particles.length < MAX_PARTICLES) spawnParticle();
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life++;
+      // 轻微轨道运动
+      p.x += p.vx + Math.sin(p.life * 0.04 + p.seed) * 0.18;
+      p.y += p.vy + Math.cos(p.life * 0.04 + p.seed) * 0.18;
+      // 约束在球内（软回弹）
+      const dx = p.x - cx, dy = p.y - cy, d = Math.hypot(dx, dy);
+      if (d > ORB_R * 0.95) {
+        p.x = cx + dx / d * ORB_R * 0.95;
+        p.y = cy + dy / d * ORB_R * 0.95;
+        p.vx *= -0.6; p.vy *= -0.6;
+      }
+      if (p.life > p.max) particles.splice(i, 1);
+    }
+  }
+
+  // ---- 电弧（蓝绿闪电环绕） ----
+  const arcs = [];
+  function spawnArc() {
+    const start = Math.random() * Math.PI * 2;
+    const span = 0.5 + Math.random() * 1.1;   // 弧度跨度
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const segs = 10 + Math.floor(Math.random() * 6);
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const a = start + dir * span * (i / segs);
+      const jitter = (Math.random() - 0.5) * 14;
+      const rr = ARC_R + jitter;
+      pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+    }
+    arcs.push({ pts, life: 0, max: 14 + Math.random() * 10, w: 1.4 + Math.random() * 1.4 });
+  }
+  function updateArcs() {
+    if (arcs.length < MAX_ARCS && Math.random() < 0.22) spawnArc();
+    for (let i = arcs.length - 1; i >= 0; i--) {
+      arcs[i].life++;
+      if (arcs[i].life > arcs[i].max) arcs.splice(i, 1);
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 内部粒子凝聚
+    for (const p of particles) {
+      const t = p.life / p.max;
+      const alpha = Math.sin(t * Math.PI) * 0.9;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
+      g.addColorStop(0, `hsla(${p.hue}, 90%, 75%, ${alpha})`);
+      g.addColorStop(1, `hsla(${p.hue}, 90%, 60%, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * 4, 0, 6.2832);
+      ctx.fill();
+    }
+
+    // 蓝绿电弧
+    for (const arc of arcs) {
+      const t = arc.life / arc.max;
+      const alpha = Math.sin(t * Math.PI) * 0.95;
+      ctx.strokeStyle = `rgba(120, 235, 215, ${alpha})`;
+      ctx.lineWidth = arc.w;
+      ctx.shadowColor = 'rgba(90, 220, 200, .9)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(arc.pts[0][0], arc.pts[0][1]);
+      for (let i = 1; i < arc.pts.length; i++) ctx.lineTo(arc.pts[i][0], arc.pts[i][1]);
+      ctx.stroke();
+      // 内芯高亮
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = `rgba(225, 255, 248, ${alpha * 0.8})`;
+      ctx.lineWidth = arc.w * 0.45;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function loop(t) {
+    if (!running) return;
+    if (!lastT) lastT = t;
+    const dt = t - lastT; lastT = t;
+    updateParticles();
+    updateArcs();
+    draw();
+    // fps
+    fpsAcc += dt; fpsCnt++;
+    if (fpsAcc > 500) { fpsShow = Math.round(1000 / (fpsAcc / fpsCnt)); fpsAcc = 0; fpsCnt = 0; }
+    if (hud.style.display !== 'none') {
+      hud.innerHTML = `particles: ${particles.length}<br>arcs: ${arcs.length}<br>fps: ${fpsShow}<br>target: ${isMobile ? 'mobile' : 'pc'}`;
+    }
+    raf = requestAnimationFrame(loop);
+  }
+
+  function openPopup() {
+    mask.classList.add('show');
+    resize();
+    if (!running) { running = true; lastT = 0; raf = requestAnimationFrame(loop); }
+  }
+  function closePopup() {
+    mask.classList.remove('show');
+    // 弹窗关闭后继续跑一会再停（保持背景微动也可），这里直接停省电
+    setTimeout(() => { if (!mask.classList.contains('show')) { running = false; if (raf) cancelAnimationFrame(raf); } }, 400);
+  }
+
+  trigBtn.addEventListener('click', openPopup);
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); closePopup(); });
+  mask.addEventListener('click', closePopup);
+  popup.addEventListener('click', (e) => e.stopPropagation());
+  perfBtn.addEventListener('click', () => {
+    const on = hud.style.display === 'none';
+    hud.style.display = on ? 'block' : 'none';
+    perfBtn.textContent = '性能 HUD：' + (on ? '关' : '开');
+  });
+  window.addEventListener('resize', () => { if (running) resize(); });
+})();
+</script>
+</body>
+</html>

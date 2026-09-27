@@ -1,0 +1,30 @@
+/* app.wxss —— 全局样式：坏情绪回收站
+   iOS 防闪屏：全局禁用 tap 高亮 + 强制 GPU 合成 */
+page {
+  height: 100%;
+  background: #1a1f26;
+  overflow: hidden;
+  color: #cfd3d8;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+view, text, input, button {
+  box-sizing: border-box;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+button::after {
+  border: none;
+}
+
+/* 全局禁止文本节点长按选中（iOS 上会触发调用菜单导致闪屏） */
+text {
+  -webkit-user-select: none;
+  user-select: none;
+}

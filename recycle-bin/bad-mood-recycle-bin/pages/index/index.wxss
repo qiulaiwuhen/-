@@ -1,0 +1,1430 @@
+/* ==========================================================
+   坏情绪回收站 v6 · 主场景样式
+   背景和机器人拆成两层：
+     1. .bg-full = 黄昏垃圾场 (bg_scrap.jpg, aspectFill 铺满)
+     2. .robot-stage = 1:1 透明机器人 + 所有交互元素（灯/吸块/能量/裂缝嫩芽/阴影/点击热区）
+  状态机（v20 · 机器人全程固定屏幕中心，只有立绘切换 + 本体动画）：
+    idle      初始：图1 待机微笑，从下方浮入中心，等待点击
+    listen    点击后：图2 认真倾听，弹出情绪输入框
+    shaking   提交后：保留图2，仅机器人本体抖动（背景静止）
+    heart     抖动结束：图3 比心，飘散能量气泡 + 礼物藏品掉落
+   ========================================================== */
+
+/* ---------- 主场景 ---------- */
+.scene {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #0c0805;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  /* iOS 防闪屏：强制 scene 容器为独立合成层，避免子元素动画重绘时整屏闪 */
+  -webkit-perspective: 1000;
+  perspective: 1000;
+}
+
+/* ==========================================================
+   v20 首页入场动画（纯展示层，不触碰业务逻辑）
+     时序①：机器人图1「待机微笑」从屏幕下方移动至屏幕中心，停住等待点击
+     严格约束：背景 / 氛围层 / 舞台位置全程零动画，只有 .robot-character 位移
+     introActive 在 onLoad 后 1.2s 置 false，交还给待机呼吸动画
+   ========================================================== */
+/* 注意：v19 的整屏淡入 sceneIn 已移除 —— 背景必须全程静止，不做任何透明度/位移动画 */
+.scene--intro .robot-character.robot-pose--idle {
+  animation: novaEnter 1.05s cubic-bezier(.16, .84, .28, 1) both;
+}
+@keyframes novaEnter {
+  0%   { opacity: 0; -webkit-transform: translate3d(0, 46vh, 0)      scale(.94); transform: translate3d(0, 46vh, 0)      scale(.94); }
+  18%  { opacity: 1; }
+  72%  { -webkit-transform: translate3d(0, -1.2vh, 0) scale(1.005); transform: translate3d(0, -1.2vh, 0) scale(1.005); }
+  100% { opacity: 1; -webkit-transform: translate3d(0, 0, 0)         scale(1);   transform: translate3d(0, 0, 0)         scale(1); }
+}
+
+/* ---------- 全屏静态背景：黄昏垃圾场 (aspectFill 铺满) ----------
+   回收过程中背景图保持完全静止，抖动仅施加在机器人本体 */
+.bg-full {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+/* 各状态下背景图都不做任何 transform 动画 —— 严格保持静止 */
+
+/* ---------- 氛围层：暖色微调 + 暗角聚焦（让机器人更突出） ---------- */
+.overlay-warm {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 145, 75, .04) 0%,
+      rgba(0, 0, 0, 0) 18%,
+      rgba(0, 0, 0, .05) 45%,
+      rgba(0, 0, 0, .28) 100%);
+  pointer-events: none;
+}
+.overlay-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    radial-gradient(ellipse 65% 55% at 50% 60%, transparent 42%, rgba(0, 0, 0, .32) 100%);
+  pointer-events: none;
+}
+
+/* ---------- 水印遮盖：背景图右下角"AI生成 WORKBUDDY"（约屏 90~99% X, 94~99% Y） ---------- */
+.mark-cover {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18vw;
+  height: 6vh;
+  z-index: 3;
+  background: linear-gradient(135deg, transparent 0%, rgba(14, 10, 6, .7) 40%, rgba(14, 10, 6, .9) 100%);
+  pointer-events: none;
+}
+
+/* ==========================================================
+   主角：透明背景的回收机器人（v20：全流程只有一个"屏幕中心待机位"）
+     - 位置固定 left:50% / bottom:28vh / width:54vw（水平居中、竖直靠中）
+     - 全流程不再发生位置位移 —— 只有立绘切换 + 机器人本体动画
+   iOS 防闪屏：transform 全部走 translate3d 强制 GPU 合成
+   ========================================================== */
+.robot-stage {
+  position: absolute;
+  left: 50%;
+  bottom: 28vh;
+  width: 54vw;
+  aspect-ratio: 1 / 1;
+  -webkit-transform: translate3d(-50%, 0, 0);
+  transform: translate3d(-50%, 0, 0);
+  z-index: 4;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  /* 无 position transition：机器人不再移动位置，避免任何多余位移被误判为"背景抖动" */
+}
+
+/* v20 变更说明：v19 及以前的 .robot-stage--busy（垃圾堆旁 busy 位 / 点击后移向中央）
+   已按最新交互时序整体移除 —— 机器人在屏幕中心待机，不再有"移动到垃圾堆"这一段。 */
+
+/* ==========================================================
+   v20 状态机时间线（背景全程静止，禁止背景抖动）
+     ① 页面加载  novaEnter 1.05s：图1 待机微笑从屏幕下方浮入中心，停住
+     ② 点击机器人  setData(listen + askVisible) → 450ms → panelVisible：图2 认真倾听 + 输入框
+     ③ 提交回收    setData(shaking)：保留图2，仅 .robot-character 播 robotShakeGentle(.55s)
+     ④ 抖动结束    setData(heart)：图3 比心 + _emitParticles + _dropGift(能量气泡/藏品掉落)
+   机器人 .robot-stage 固定居中，全程不位移；抖动只作用在机器人本体，背景/overlay 零动画。
+   ========================================================== */
+
+/* ---------- 挠头的手 (✋) ----------
+   动作：0~25% 手从右下角滑到头顶；25~80% 在头顶蹭 1 次；80~100% 缩回消失
+   总时长 0.65s（一次性，不循环）
+   iOS 防闪屏：translate3d 强制 GPU 合成 */
+.greet-hand {
+  position: absolute;
+  right: 4%;
+  bottom: 22%;
+  font-size: 18vw;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9;
+  filter: drop-shadow(0 4rpx 8rpx rgba(0, 0, 0, .35));
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.greet-hand--on {
+  animation: handPat .65s cubic-bezier(.34, .6, .35, 1) forwards;
+}
+@keyframes handPat {
+  0%   { opacity: 0; -webkit-transform: translate3d(0, 0, 0)           scale(.4)  rotate(0deg); transform: translate3d(0, 0, 0)           scale(.4)  rotate(0deg); }
+  18%  { opacity: 1; -webkit-transform: translate3d(0, -28%, 0)       scale(.9)  rotate(-8deg); transform: translate3d(0, -28%, 0)       scale(.9)  rotate(-8deg); }
+  38%  { opacity: 1; -webkit-transform: translate3d(-110%, -160%, 0) scale(1)   rotate(-18deg); transform: translate3d(-110%, -160%, 0) scale(1)   rotate(-18deg); }
+  /* 蹭 1 次 */
+  50%  {          opacity: 1; -webkit-transform: translate3d(-110%, -172%, 0) scale(1.08) rotate(-18deg); transform: translate3d(-110%, -172%, 0) scale(1.08) rotate(-18deg); }
+  62%  {          opacity: 1; -webkit-transform: translate3d(-110%, -160%, 0) scale(1)    rotate(-18deg); transform: translate3d(-110%, -160%, 0) scale(1)    rotate(-18deg); }
+  /* 缩回 */
+  85%  { opacity: 1; -webkit-transform: translate3d(0, -28%, 0)       scale(.9)  rotate(-8deg); transform: translate3d(0, -28%, 0)       scale(.9)  rotate(-8deg); }
+  100% { opacity: 0; -webkit-transform: translate3d(0, 0, 0)           scale(.4)  rotate(0deg); transform: translate3d(0, 0, 0)           scale(.4)  rotate(0deg); }
+}
+
+/* ---------- 眼睛闪烁 sparkles (✦ ✦ ✦) ----------
+   一次眨眼 0.4s，3 颗星错开 0/0.1s/0.2s 形成层次感 */
+.greet-sparkles { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+
+.greet-sparkle {
+  position: absolute;
+  font-size: 12%;
+  line-height: 1;
+  color: #fff7d8;
+  opacity: 0;
+  text-shadow: 0 0 8% rgba(255, 230, 150, .9);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.greet-sparkle.s1 { left: 24%; top: 22%; }
+.greet-sparkle.s2 { left: 56%; top: 16%; font-size: 9%; }
+.greet-sparkle.s3 { left: 70%; top: 30%; font-size: 7%; }
+
+.greet-sparkle--on {
+  animation: sparkleBlink .4s ease-in-out 1;
+}
+.greet-sparkle.s2.greet-sparkle--on { animation-delay: .08s; }
+.greet-sparkle.s3.greet-sparkle--on { animation-delay: .16s; }
+@keyframes sparkleBlink {
+  0%, 100% { opacity: 0; -webkit-transform: translate3d(0, 0, 0) scale(.4) rotate(0deg); transform: translate3d(0, 0, 0) scale(.4) rotate(0deg); }
+  45%      { opacity: 1; -webkit-transform: translate3d(0, 0, 0) scale(1.2) rotate(45deg); transform: translate3d(0, 0, 0) scale(1.2) rotate(45deg); }
+  75%      { opacity: .6; -webkit-transform: translate3d(0, 0, 0) scale(1)   rotate(80deg); transform: translate3d(0, 0, 0) scale(1)   rotate(80deg); }
+}
+
+/* ==========================================================
+   透明机器人图本体：widthFix 等比
+   姿态通过 .robot-pose--* 控制，保证不同立绘都有对应动画
+   ========================================================== */
+.robot-character {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  filter: drop-shadow(0 6rpx 14rpx rgba(0, 0, 0, .35));
+  transform-origin: 50% 80%;
+  -webkit-transform-origin: 50% 80%;
+}
+
+/* ---------- v20 机器人姿态动画 ---------- */
+/* 仅保留 idle 待机呼吸（见下方 robot-pose--idle）；listen/heart 为静态立绘，
+   抖动由 .scene--shaking .robot-character 单独承载，背景始终保持静止。 */
+
+/* ---------- v20 待机呼吸：仅缩放、不位移，绝不影响"背景静止" ---------- */
+.robot-character.robot-pose--idle {
+  animation: robotIdleBreath 3.2s ease-in-out infinite;
+}
+@keyframes robotIdleBreath {
+  0%, 100% { -webkit-transform: translate3d(0, 0, 0) scale(1);     transform: translate3d(0, 0, 0) scale(1); }
+  50%      { -webkit-transform: translate3d(0, 0, 0) scale(1.015); transform: translate3d(0, 0, 0) scale(1.015); }
+}
+
+/* ==========================================================
+   v20 抖动：提交回收后，背景图保持完全静止
+   仅 .robot-character（机器人本体）在 shaking 阶段执行一次极轻微抖动 (0.55s)
+   柔和、不剧烈，模拟机器人正在"消化"坏情绪
+   ========================================================== */
+/* v19 加固：抖动阶段强制只播机器人抖動，屏蔽忙碌/正面等待机动画的干扰，
+   且只作用于 .robot-character（背景图/舞台/overlay 均不带动画 → 背景保持完全静止） */
+.scene--shaking .robot-character {
+  animation: robotShakeGentle .55s cubic-bezier(.36, .07, .19, .97) both !important;
+}
+@keyframes robotShakeGentle {
+  0%   { -webkit-transform: translate3d(0, 0, 0)       rotate(0deg);    transform: translate3d(0, 0, 0)       rotate(0deg); }
+  15%  { -webkit-transform: translate3d(-1.2%, 0, 0)   rotate(-0.6deg); transform: translate3d(-1.2%, 0, 0)   rotate(-0.6deg); }
+  30%  { -webkit-transform: translate3d(1.2%, 0, 0)    rotate(0.6deg);  transform: translate3d(1.2%, 0, 0)    rotate(0.6deg); }
+  45%  { -webkit-transform: translate3d(-1%, 0, 0)     rotate(-0.45deg);transform: translate3d(-1%, 0, 0)     rotate(-0.45deg); }
+  60%  { -webkit-transform: translate3d(1%, 0, 0)      rotate(0.45deg); transform: translate3d(1%, 0, 0)      rotate(0.45deg); }
+  75%  { -webkit-transform: translate3d(-0.6%, 0, 0)   rotate(-0.3deg); transform: translate3d(-0.6%, 0, 0)   rotate(-0.3deg); }
+  100% { -webkit-transform: translate3d(0, 0, 0)       rotate(0deg);    transform: translate3d(0, 0, 0)       rotate(0deg); }
+}
+
+/* ---------- 头顶指示灯（顶部两个橙色小灯珠之间，靠左） ---------- */
+.robot-lamp {
+  position: absolute;
+  left: 50%;
+  top: 8%;
+  width: 6%;
+  height: 6%;
+  -webkit-transform: translate3d(-50%, 0, 0);
+  transform: translate3d(-50%, 0, 0);
+  border-radius: 50%;
+  background: #3a2f23;
+  border: .5% solid #1a120a;
+  box-shadow: inset 0 0 4% rgba(0, 0, 0, .8);
+  /* 初始（忙碌待机）状态下隐藏额头暗灯，避免黑色圆点；点亮阶段再显示 */
+  opacity: 0;
+  transition: background .3s, box-shadow .3s, opacity .3s;
+  pointer-events: none;
+  z-index: 6;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+/* ==========================================================
+   v9 头顶灯分阶段控制：
+     - attentive 阶段（眨眼+挠头）：灯保持暗色，不点亮
+     - lamp_on 阶段：灯一次性点亮（橙色径向渐变 + 暖光晕）
+     - greeting 阶段：灯保持亮起（lamp_on 的最终状态）
+   这样能清晰看到"灯亮起"这个动作。
+   ========================================================== */
+.intro--lamp .robot-lamp {
+  background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+  animation: lampOn .5s cubic-bezier(.4, 0, .2, 1) forwards;
+  opacity: 1;
+}
+.intro--ask .robot-lamp,
+.intro--greeting .robot-lamp {
+  background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+  box-shadow: 0 0 8% 4% rgba(255, 200, 110, .65);
+  opacity: 1;
+}
+@keyframes lampOn {
+  0% {
+    background: #3a2f23;
+    box-shadow: inset 0 0 4% rgba(0, 0, 0, .8);
+  }
+  60% {
+    box-shadow: 0 0 14% 6% rgba(255, 200, 110, .9);
+  }
+  100% {
+    background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+    box-shadow: 0 0 10% 5% rgba(255, 200, 110, .8);
+  }
+}
+
+/* 头顶暖光晕（覆盖头顶区域） */
+.robot-glow {
+  position: absolute;
+  left: 50%;
+  top: -10%;
+  width: 75%;
+  height: 50%;
+  -webkit-transform: translate3d(-50%, 0, 0);
+  transform: translate3d(-50%, 0, 0);
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 205, 130, .35) 0%, transparent 65%);
+  opacity: 0;
+  transition: opacity .4s ease;
+  pointer-events: none;
+  z-index: 5;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+/* attentive 阶段（眨眼+挠头）暖光晕保持隐藏 */
+.intro--lamp .robot-glow {
+  animation: glowOn .5s cubic-bezier(.4, 0, .2, 1) forwards;
+}
+.intro--ask .robot-glow,
+.intro--greeting .robot-glow {
+  opacity: .7;
+}
+@keyframes glowOn {
+  0%   { opacity: 0; }
+  100% { opacity: .7; }
+}
+
+/* 脚下软投影（透明机器人没有自带的"落点"，加个椭圆阴影让它"站住"） */
+.robot-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -3%;
+  width: 70%;
+  height: 8%;
+  -webkit-transform: translate3d(-50%, 0, 0);
+  transform: translate3d(-50%, 0, 0);
+  background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .3) 45%, transparent 75%);
+  filter: blur(2rpx);
+  pointer-events: none;
+  z-index: 3;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* ==========================================================
+   v20 询问气泡：点击机器人切到 listen 态后，从头顶上方冒出的引导录入步骤
+   仅 askVisible 时显示；约 450ms 后滑出录入面板（panelVisible）
+   ========================================================== */
+.ask-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: 102%;
+  width: 64vw;
+  max-width: 560rpx;
+  padding: 22rpx 26rpx 20rpx;
+  background: linear-gradient(180deg, #fffdf6 0%, #fff4dd 100%);
+  border: 2rpx solid rgba(255, 200, 120, .85);
+  border-radius: 22rpx;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, .35);
+  z-index: 12;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  -webkit-transform: translateX(-50%) translateY(8%) scale(.92);
+  transform: translateX(-50%) translateY(8%) scale(.92);
+  transition:
+    opacity .3s ease,
+    transform .32s cubic-bezier(.34, 1.56, .64, 1),
+    visibility .3s;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.ask-bubble--show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  -webkit-transform: translateX(-50%) translateY(0) scale(1);
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+.ask-text {
+  font-size: 30rpx;
+  line-height: 1.5;
+  color: #5a4632;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 16rpx;
+}
+.ask-actions {
+  display: flex;
+  gap: 16rpx;
+  justify-content: center;
+}
+.ask-btn {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+.ask-btn--start {
+  background: linear-gradient(135deg, #ffcf7d 0%, #ff9d4d 100%);
+  color: #4a2e10;
+}
+.ask-btn--later {
+  background: rgba(90, 70, 50, .12);
+  color: #7a6450;
+}
+.ask-tail {
+  position: absolute;
+  left: 50%;
+  bottom: -16rpx;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 16rpx solid transparent;
+  border-right: 16rpx solid transparent;
+  border-top: 18rpx solid #fff4dd;
+  filter: drop-shadow(0 2rpx 0 rgba(255, 200, 120, .85));
+}
+
+/* ---------- 黑色方块（坏情绪从屏下方飞入机器人胸口） ---------- */
+.suck-block {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 8%;
+  height: 8%;
+  margin-left: -4%;
+  border-radius: 1.5%;
+  background: linear-gradient(135deg, #2a2e34 0%, #0d0f12 70%);
+  box-shadow: 0 0 4% rgba(0, 0, 0, .8), inset 0 0 1.5% rgba(255, 255, 255, .08);
+  opacity: 0;
+  z-index: 7;
+  pointer-events: none;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.suck-block--on { animation: suckFly .9s cubic-bezier(.35, .1, .35, 1) forwards; }
+@keyframes suckFly {
+  0%   { opacity: 0; -webkit-transform: translate3d(0, 40%, 0) scale(.7)  rotate(0deg); transform: translate3d(0, 40%, 0) scale(.7)  rotate(0deg); }
+  22%  { opacity: 1; }
+  70%  { opacity: 1; -webkit-transform: translate3d(0, -28%, 0) scale(.5) rotate(180deg); transform: translate3d(0, -28%, 0) scale(.5) rotate(180deg); }
+  100% { opacity: 0; -webkit-transform: translate3d(0, -38%, 0) scale(.12); transform: translate3d(0, -38%, 0) scale(.12); }
+}
+
+/* ---------- +10 能量值（机器人胸口偏上） ---------- */
+.float-energy {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  -webkit-transform: translate3d(-50%, 0, 0);
+  transform: translate3d(-50%, 0, 0);
+  padding: 2% 6%;
+  border-radius: 30%;
+  background: rgba(24, 20, 14, .88);
+  border: .5% solid rgba(255, 205, 130, .5);
+  color: #ffd9a0;
+  font-size: 5.5%;
+  letter-spacing: 4%;
+  opacity: 0;
+  z-index: 8;
+  pointer-events: none;
+  white-space: nowrap;
+  font-weight: 700;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.float-energy--on { animation: floatUp 1.25s ease-out forwards; }
+@keyframes floatUp {
+  0%   { opacity: 0; -webkit-transform: translate3d(-50%, 4%, 0); transform: translate3d(-50%, 4%, 0); }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; -webkit-transform: translate3d(-50%, -18%, 0); transform: translate3d(-50%, -18%, 0); }
+}
+
+/* ==========================================================
+   v13 淡绿粒子：回收成功时从机器人胸口向外飘出
+   使用 CSS 变量 --angle 控制每个粒子的飞出方向
+   ========================================================== */
+.particle-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.particle {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 3%;
+  height: 3%;
+  margin-left: -1.5%;
+  margin-top: -1.5%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #eafff1 0%, #a8f0b8 45%, #5fd97a 100%);
+  box-shadow: 0 0 8rpx 4rpx rgba(140, 240, 170, .6);
+  opacity: 0;
+  -webkit-transform: rotate(var(--angle)) translate3d(0, 0, 0);
+  transform: rotate(var(--angle)) translate3d(0, 0, 0);
+  animation: particleOut 1.1s ease-out forwards;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+@keyframes particleOut {
+  0%   { opacity: 0; -webkit-transform: rotate(var(--angle)) translate3d(0, 0, 0)      scale(.4); transform: rotate(var(--angle)) translate3d(0, 0, 0)      scale(.4); }
+  15%  { opacity: 1; -webkit-transform: rotate(var(--angle)) translate3d(0, -14%, 0)   scale(1);  transform: rotate(var(--angle)) translate3d(0, -14%, 0)   scale(1); }
+  100% { opacity: 0; -webkit-transform: rotate(var(--angle)) translate3d(0, -55%, 0)   scale(.35);transform: rotate(var(--angle)) translate3d(0, -55%, 0)   scale(.35); }
+}
+
+/* ==========================================================
+   机器人交互热区（作为 .robot-stage 的最后一个子节点，自动跟随机器人位置）
+   - busy:      热区在垃圾堆旁的机器人身上，可点击
+   - moving:    移动过程中禁点（避免动画期间触发）
+   - attentive: 到达中央、执行眨眼挠头期间禁点
+   - lamp:      灯亮期间禁点
+   - greeting:  头顶灯亮 + 弹交互面板期间禁点（面板自带点击层）
+   关键：.robot-zone 使用 inset:0（相对 .robot-stage），
+   因此 .robot-stage 的 left/bottom/transform transition 会自动带着热区一起走，
+   无需单独同步位置。iOS 防闪屏：backface-visibility + translate3d 备用。
+   ========================================================== */
+.robot-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* 开机悬浮提示气泡：v20.1 移到机器人头顶上方（.robot-stage 内 bottom:104%）
+   不遮挡机器人本体；向下小尾巴指向机器人，明确"引导点击"意图。
+   仅 idle 待机态显示（由 WXML wx:if 控制），pointer-events:none 不透传点击。 */
+.tap-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 104%;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  max-width: 80vw;
+  box-sizing: border-box;
+  color: #fff4d8;
+  font-size: 40rpx;
+  line-height: 1.3;
+  font-weight: 900;
+  letter-spacing: 4rpx;
+  padding: 18rpx 30rpx;
+  border-radius: 999rpx;
+  background: rgba(15, 10, 5, .88);
+  border: 2rpx solid rgba(255, 205, 130, .7);
+  white-space: nowrap;
+  animation: hintPulse 2.2s ease-in-out infinite;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(12rpx);
+  backdrop-filter: blur(12rpx);
+  text-shadow: 0 2rpx 6rpx rgba(0, 0, 0, .8);
+  box-shadow: 0 6rpx 24rpx rgba(0, 0, 0, .55);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  z-index: 13;
+}
+/* 向下小尾巴：指向机器人头顶，强化"引导点击"语义 */
+.tap-hint-tail {
+  position: absolute;
+  left: 50%;
+  bottom: -14rpx;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 14rpx solid transparent;
+  border-right: 14rpx solid transparent;
+  border-top: 16rpx solid rgba(15, 10, 5, .88);
+  filter: drop-shadow(0 2rpx 0 rgba(255, 205, 130, .7));
+}
+@keyframes hintPulse {
+  0%, 100% { opacity: .65; -webkit-transform: translateX(-50%) translateY(0);      transform: translateX(-50%) translateY(0); }
+  50%      { opacity: 1;   -webkit-transform: translateX(-50%) translateY(-16rpx); transform: translateX(-50%) translateY(-16rpx); }
+}
+
+/* 移动/到达中央/灯亮/面板弹出阶段：点击热区禁点 */
+.intro--moving    .robot-zone,
+  .intro--attentive .robot-zone,
+  .intro--lamp      .robot-zone,
+  .intro--ask       .robot-zone,
+  .intro--greeting  .robot-zone { pointer-events: none; }
+
+/* v20.1：tap-hint 的显隐完全由 WXML wx:if（robotState==='idle' 且未弹面板/未提交）控制，
+   不再依赖旧的 .intro--moving/.intro--attentive 等已废弃阶段类 */
+
+/* ==========================================================
+   顶部 / 底部 文案
+   ========================================================== */
+.top-copy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-top: calc(env(safe-area-inset-top) + 32rpx);
+  text-align: center;
+  z-index: 20;
+  pointer-events: none;
+}
+.top-copy-en {
+  font-size: 28rpx;
+  letter-spacing: 8rpx;
+  color: #f0e4c9;
+  font-weight: 700;
+  text-shadow: 0 2rpx 14rpx rgba(0, 0, 0, .75), 0 0 6rpx rgba(255, 200, 130, .25);
+}
+.top-copy-zh {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  letter-spacing: 4rpx;
+  color: #c5b89a;
+  text-shadow: 0 2rpx 10rpx rgba(0, 0, 0, .75);
+}
+
+.bottom-copy {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 18rpx);
+  text-align: center;
+  font-size: 22rpx;
+  color: #9d968a;
+  letter-spacing: 3rpx;
+  z-index: 20;
+  text-shadow: 0 2rpx 10rpx rgba(0, 0, 0, .75);
+}
+
+/* ============================================================
+   首次引导弹窗（机器人讲解口吻）
+   ============================================================ */
+.guide-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 13, .78);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: maskIn .3s ease both;
+  padding: 0 40rpx;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+@keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+
+.guide-card {
+  width: 600rpx;
+  max-width: 100%;
+  padding: 56rpx 56rpx 44rpx;
+  border-radius: 36rpx;
+  background: linear-gradient(180deg, #2c2a25 0%, #1d1b17 100%);
+  border: 2rpx solid rgba(205, 175, 130, .3);
+  box-shadow: 0 24rpx 70rpx rgba(0, 0, 0, .65);
+  text-align: center;
+  animation: cardIn .42s cubic-bezier(.2, .9, .3, 1.25) both;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+/* 简化版引导:不再用 3 步列表,文案更紧凑 */
+.guide-card--simple {
+  padding: 60rpx 48rpx 48rpx;
+}
+.guide-card--simple .guide-sub {
+  margin-bottom: 44rpx;
+  font-size: 30rpx;
+  line-height: 1.55;
+}
+@keyframes cardIn {
+  0%   { -webkit-transform: translate3d(0, 20rpx, 0) scale(.88); transform: translate3d(0, 20rpx, 0) scale(.88); opacity: 0; }
+  100% { -webkit-transform: translate3d(0, 0, 0)     scale(1);    transform: translate3d(0, 0, 0)     scale(1);    opacity: 1; }
+}
+
+.guide-robot {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+  margin: 0 auto 28rpx;
+  border-radius: 36rpx;
+  background: linear-gradient(180deg, #8a744f 0%, #5d4c34 100%);
+  border: 4rpx solid #2e241c;
+  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, .35), inset 0 -4rpx 6rpx rgba(0, 0, 0, .3);
+}
+.guide-robot-eye {
+  position: absolute;
+  left: 50%;
+  top: 36rpx;
+  width: 50rpx;
+  height: 50rpx;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 38%, #ffe6b8 0%, #f5b45e 60%, #b9772f 100%);
+  box-shadow: 0 0 18rpx 6rpx rgba(255, 190, 100, .55);
+  animation: eyeBlink 3s ease-in-out infinite;
+}
+@keyframes eyeBlink {
+  0%, 90%, 100% { transform: translateX(-50%) scaleY(1); }
+  93%, 97%      { transform: translateX(-50%) scaleY(.1); }
+}
+.guide-robot-lamp {
+  position: absolute;
+  left: 50%;
+  top: -10rpx;
+  width: 16rpx;
+  height: 16rpx;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: #7fd4a6;
+  box-shadow: 0 0 10rpx 4rpx rgba(127, 212, 166, .8);
+  animation: lampBlink 1.4s ease-in-out infinite;
+}
+@keyframes lampBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
+.guide-title {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #e8d5b8;
+  letter-spacing: 2rpx;
+  margin-bottom: 8rpx;
+}
+.guide-sub {
+  font-size: 26rpx;
+  color: #b3a684;
+  letter-spacing: 1rpx;
+  margin-bottom: 36rpx;
+}
+
+.guide-list {
+  text-align: left;
+  margin-bottom: 40rpx;
+}
+.guide-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 26rpx;
+}
+.guide-num {
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 52rpx;
+  border-radius: 50%;
+  background: rgba(255, 205, 130, .12);
+  border: 2rpx solid rgba(255, 205, 130, .35);
+  color: #ffd9a0;
+  font-size: 30rpx;
+  font-weight: 700;
+  text-align: center;
+  margin-right: 22rpx;
+}
+.guide-item:first-child .guide-num {
+  background: rgba(127, 212, 166, .15);
+  border-color: rgba(127, 212, 166, .5);
+  color: #7fd4a6;
+}
+.guide-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 4rpx;
+}
+.guide-h {
+  font-size: 28rpx;
+  color: #e8dcc2;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+.guide-d {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #8a8170;
+  letter-spacing: 1rpx;
+}
+
+.guide-btn {
+  width: 100%;
+  height: 92rpx;
+  line-height: 92rpx;
+  border-radius: 46rpx;
+  background: linear-gradient(135deg, #e3b87f 0%, #c99a5f 100%);
+  color: #2a2016;
+  font-size: 30rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+  border: none;
+  padding: 0;
+}
+.guide-btn--hover {
+  opacity: .88;
+  -webkit-transform: translate3d(0, 0, 0) scale(.98);
+  transform: translate3d(0, 0, 0) scale(.98);
+}
+
+/* ============================================================
+   交互面板（仅点击机器人后弹出）
+   iOS 防闪屏:panel 强制独立合成层 + translate3d 平滑
+   ============================================================ */
+.panel-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 11, .6);
+  z-index: 60;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .3s ease, visibility .3s;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.panel-mask--show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28rpx 40rpx calc(env(safe-area-inset-bottom) + 40rpx);
+  border-radius: 40rpx 40rpx 0 0;
+  background: linear-gradient(180deg, #2a2b2c 0%, #1f2021 100%);
+  border-top: 2rpx solid rgba(205, 175, 130, .22);
+  box-shadow: 0 -16rpx 50rpx rgba(0, 0, 0, .5);
+  -webkit-transform: translate3d(0, 100%, 0);
+  transform: translate3d(0, 100%, 0);
+  transition:
+    -webkit-transform .38s cubic-bezier(.22, .9, .3, 1),
+    transform .38s cubic-bezier(.22, .9, .3, 1);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.panel-mask--show .panel {
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+}
+
+.panel-handle {
+  width: 72rpx;
+  height: 8rpx;
+  margin: 0 auto 26rpx;
+  border-radius: 8rpx;
+  background: rgba(255, 255, 255, .14);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+.panel-robot {
+  position: relative;
+  width: 84rpx;
+  height: 84rpx;
+  border-radius: 30rpx;
+  background: linear-gradient(180deg, #8a744f 0%, #5d4c34 100%);
+  border: 3rpx solid #2e241c;
+  flex-shrink: 0;
+}
+.panel-robot-eye {
+  position: absolute;
+  left: 50%;
+  top: 22rpx;
+  width: 30rpx;
+  height: 30rpx;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 38%, #ffe6b8 0%, #f5b45e 60%, #b9772f 100%);
+  box-shadow: 0 0 10rpx 3rpx rgba(255, 190, 100, .45);
+}
+.panel-q {
+  margin-left: 22rpx;
+  font-size: 30rpx;
+  color: #e2c9a6;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+
+.panel-input-wrap {
+  background: #17181a;
+  border-radius: 18rpx;
+  border: 2rpx solid rgba(255, 255, 255, .06);
+  padding: 6rpx 24rpx;
+  margin-bottom: 22rpx;
+}
+.panel-input {
+  height: 88rpx;
+  font-size: 28rpx;
+  color: #e8e6e0;
+}
+.panel-input-ph {
+  color: #6b665c;
+}
+
+.voice-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 92rpx;
+  border-radius: 46rpx;
+  background: #17181a;
+  border: 2rpx solid rgba(255, 255, 255, .08);
+  margin-bottom: 22rpx;
+}
+.voice-btn--rec {
+  background: rgba(90, 120, 100, .28);
+  border-color: rgba(140, 200, 160, .45);
+  animation: recPulse 1.2s ease-in-out infinite;
+}
+@keyframes recPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(120, 200, 160, .25); }
+  50%      { box-shadow: 0 0 0 12rpx rgba(120, 200, 160, 0); }
+}
+.mic {
+  position: relative;
+  width: 22rpx;
+  height: 30rpx;
+  border-radius: 8rpx;
+  background: #8b939e;
+  margin-right: 16rpx;
+}
+.mic::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 32rpx;
+  width: 18rpx;
+  height: 8rpx;
+  transform: translateX(-50%);
+  background: #8b939e;
+  border-radius: 0 0 8rpx 8rpx;
+}
+.mic--rec { background: #7fd4a6; }
+.voice-text {
+  font-size: 26rpx;
+  color: #b4aca0;
+}
+
+.confirm-btn {
+  height: 100rpx;
+  width: 100%;            /* 与上方输入框/语音按钮同宽，底部对齐更整齐 */
+  line-height: 100rpx;
+  border-radius: 50rpx;
+  background: linear-gradient(135deg, #e3b87f 0%, #c99a5f 100%);
+  color: #2a2016;
+  font-size: 32rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+  border: none;
+  padding: 0;
+}
+.confirm-btn--empty {
+  opacity: .45;
+}
+.confirm-btn--hover {
+  opacity: .85;
+  -webkit-transform: translate3d(0, 0, 0) scale(.985);
+  transform: translate3d(0, 0, 0) scale(.985);
+}
+
+/* ============================================================
+   v13 回收成功：机器人头顶大字气泡反馈
+   定位在 robot-stage 内、机器人头顶上方，跟随机器人平移；
+   大字号、高对比，让用户一眼看清（不再用整屏小卡片）
+   ============================================================ */
+.reward-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: 106%;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  width: 74vw;
+  max-width: 580rpx;
+  box-sizing: border-box;
+  padding: 28rpx 32rpx 26rpx;
+  background: linear-gradient(180deg, rgba(22, 44, 32, .94), rgba(12, 28, 20, .96));
+  border: 3rpx solid rgba(120, 230, 160, .5);
+  border-radius: 26rpx;
+  box-shadow:
+    0 14rpx 44rpx rgba(0, 0, 0, .5),
+    0 0 26rpx rgba(120, 230, 160, .3);
+  text-align: center;
+  z-index: 14;
+  pointer-events: none;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  animation: rewardPop .42s cubic-bezier(.34, 1.56, .64, 1) both;
+}
+@keyframes rewardPop {
+  0%   { opacity: 0; -webkit-transform: translateX(-50%) translateY(18rpx) scale(.84); transform: translateX(-50%) translateY(18rpx) scale(.84); }
+  100% { opacity: 1; -webkit-transform: translateX(-50%) translateY(0) scale(1); transform: translateX(-50%) translateY(0) scale(1); }
+}
+.reward-bubble-icon {
+  font-size: 56rpx;
+  line-height: 1;
+  margin-bottom: 12rpx;
+}
+.reward-bubble-title {
+  font-size: 42rpx;
+  font-weight: 800;
+  color: #eafff1;
+  letter-spacing: 1rpx;
+}
+.reward-bubble-desc {
+  margin-top: 12rpx;
+  font-size: 36rpx;          /* 核心文案：大幅放大，清晰可读 */
+  font-weight: 700;
+  line-height: 1.5;
+  color: #8df0b4;            /* 绿色高亮，呼应治愈主题 */
+  text-shadow: 0 0 14rpx rgba(120, 230, 160, .4);
+}
+.reward-bubble-energy {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ffd089;            /* 金色养分，醒目 */
+}
+
+/* ============================================================
+   v12.8 新增：礼物掉落（保留自 v12.7，藤蔓逻辑已移除）
+   从机器人周边（top:30%）向下飘，旋转淡出
+   z-index：11（必须 > robot-zone(10)，否则点击能量球会命中下方回收热区；
+             panel-mask(60) / reward-mask(80) 仍在它上面 → 弹窗覆盖）
+   ============================================================ */
+.gift-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;   /* 层本身不拦截点击，仅能量球可点 */
+  z-index: 11;  /* 必须 > .robot-zone(10)，否则点击能量球会命中下方回收热区 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+/* v12.9 能量球：悬浮可点击的发光圆球，点击后飞入宝箱 */
+.gift {
+  position: absolute;
+  /* left / top 由内联样式控制（机器人周围悬浮） */
+  width: 13vw;
+  height: 13vw;
+  margin-left: -6.5vw;    /* 让 left 指向球心 */
+  margin-top: -6.5vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 5.2vw;       /* 心形内显示的能量数值 */
+  font-weight: 800;
+  line-height: 1;
+  /* 心形：SVG 绿渐变（与宝箱同源），用 drop-shadow 描出心形光晕 */
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2029.6'%3E%3Cdefs%3E%3CradialGradient%20id='g'%20cx='50%25'%20cy='40%25'%20r='62%25'%3E%3Cstop%20offset='0%25'%20stop-color='%23e4ffd6'/%3E%3Cstop%20offset='55%25'%20stop-color='%2378e084'/%3E%3Cstop%20offset='100%25'%20stop-color='%233caa50'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cpath%20d='M23.6,0c-3.4,0-6.3,2.7-7.6,5.6C14.7,2.7,11.8,0,8.4,0C3.8,0,0,3.8,0,8.4c0,9.4,9.5,11.9,16,21.2c6.1-9.3,16-12.1,16-21.2C32,3.8,28.2,0,23.6,0z'%20fill='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 90%;
+  background-repeat: no-repeat;
+  background-position: center;
+  filter: drop-shadow(0 0 10rpx rgba(120, 224, 150, .75));
+  color: #ffffff;
+  text-shadow: 0 1rpx 3rpx rgba(0, 40, 10, .5);
+  pointer-events: auto;   /* 单独可点 */
+  cursor: pointer;
+  opacity: 0;
+  -webkit-transform: translate3d(0, 0, 0) scale(.5);
+  transform: translate3d(0, 0, 0) scale(.5);
+  animation: giftFloat 6s ease-in-out forwards;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+/* 收集瞬间：飞向宝箱（向下缩小淡出） */
+.gift--collecting {
+  animation: giftToChest .48s cubic-bezier(.5, 0, .7, 1) forwards !important;
+  pointer-events: none;
+}
+@keyframes giftFloat {
+  0%   { opacity: 0; -webkit-transform: translate3d(0, -12rpx, 0) scale(.5);  transform: translate3d(0, -12rpx, 0) scale(.5); }
+  12%  { opacity: 1; -webkit-transform: translate3d(0, 0, 0)       scale(1);   transform: translate3d(0, 0, 0)       scale(1); }
+  50%  { opacity: 1; -webkit-transform: translate3d(0, -16rpx, 0) scale(1.05); transform: translate3d(0, -16rpx, 0) scale(1.05); }
+  84%  { opacity: 1; -webkit-transform: translate3d(0, 6rpx, 0)    scale(1);   transform: translate3d(0, 6rpx, 0)    scale(1); }
+  100% { opacity: 0; -webkit-transform: translate3d(0, 34rpx, 0)   scale(.7);  transform: translate3d(0, 34rpx, 0)   scale(.7); }
+}
+@keyframes giftToChest {
+  0%   { opacity: 1; -webkit-transform: translate3d(0, 0, 0)      scale(1);   transform: translate3d(0, 0, 0)      scale(1); }
+  100% { opacity: 0; -webkit-transform: translate3d(0, 60vh, 0)   scale(.2);  transform: translate3d(0, 60vh, 0)   scale(.2); }
+}
+
+/* ============================================================
+   v12.9 宝箱 HUD（屏幕级固定，不随机器人移动）
+   去掉绿框框：用宝箱图标本身作为入口，右上角角标显示当前能量积分
+   ============================================================ */
+.chest-hud {
+  position: absolute;
+  right: 5%;
+  bottom: 7%;
+  z-index: 50;
+  /* 无背景、无边框——绿框框已移除 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transition: transform .2s ease;
+}
+.chest-hud--bounce { animation: chestBounce .42s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes chestBounce {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.chest-icon-wrap {
+  position: relative;
+  width: 212rpx;
+  height: 212rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chest-icon-img {
+  width: 190rpx;
+  height: 190rpx;
+  display: block;
+  filter: drop-shadow(0 6rpx 14rpx rgba(0, 0, 0, .5)) drop-shadow(0 0 14rpx rgba(255, 200, 120, .4));
+}
+/* 能量积分角标：紧贴宝箱右上角，清晰展示当前可兑换能量 */
+.chest-count {
+  position: absolute;
+  top: 6rpx;
+  right: 6rpx;
+  min-width: 66rpx;
+  height: 66rpx;
+  line-height: 66rpx;
+  padding: 0 14rpx;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(180deg, #ffcf7d, #ff9d4d);
+  border: 3rpx solid #fff;
+  border-radius: 999rpx;
+  box-shadow: 0 3rpx 12rpx rgba(0, 0, 0, .45);
+  text-shadow: none;
+  z-index: 2;
+}
+
+/* ============================================================
+   v13.2 能量宝箱（科幻风：深空底 + 霓虹青绿 + 网格光晕）
+   ============================================================ */
+.chest-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: rgba(3, 8, 16, .62);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.chest-panel {
+  position: relative;
+  width: 100%;
+  max-height: 84%;
+  box-sizing: border-box;
+  padding: 30rpx 26rpx 36rpx;
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(95, 240, 208, .14), transparent 60%),
+    linear-gradient(180deg, #0b1c2b, #06101c);
+  border-top-left-radius: 30rpx;
+  border-top-right-radius: 30rpx;
+  border-top: 2rpx solid rgba(95, 240, 208, .55);
+  box-shadow: 0 -10rpx 50rpx rgba(0, 0, 0, .6), inset 0 1rpx 0 rgba(123, 220, 255, .25);
+  animation: chestUp .32s cubic-bezier(.2, .9, .3, 1.1);
+  overflow-y: auto;
+}
+/* 网格扫描底纹 */
+.chest-panel::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background-image:
+    linear-gradient(rgba(95, 240, 208, .06) 1rpx, transparent 1rpx),
+    linear-gradient(90deg, rgba(95, 240, 208, .06) 1rpx, transparent 1rpx);
+  background-size: 44rpx 44rpx;
+  pointer-events: none;
+  opacity: .5;
+}
+@keyframes chestUp {
+  from { -webkit-transform: translate3d(0, 100%, 0); transform: translate3d(0, 100%, 0); }
+  to   { -webkit-transform: translate3d(0, 0, 0);     transform: translate3d(0, 0, 0); }
+}
+.chest-panel-head { position: relative; text-align: center; margin-bottom: 24rpx; }
+.chest-panel-title {
+  display: block;
+  font-size: 38rpx;
+  font-weight: 800;
+  letter-spacing: 4rpx;
+  color: #aef9e8;
+  text-shadow: 0 0 16rpx rgba(95, 240, 208, .6);
+}
+.chest-panel-sub { display: block; font-size: 20rpx; color: #7fbfd6; margin-top: 8rpx; }
+
+/* 切换标签 */
+.chest-tabs {
+  position: relative;
+  display: flex;
+  gap: 18rpx;
+  justify-content: center;
+  margin-bottom: 24rpx;
+}
+.chest-tab {
+  flex: 1;
+  max-width: 240rpx;
+  text-align: center;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #6f9bb0;
+  padding: 14rpx 0;
+  border-radius: 999rpx;
+  border: 2rpx solid rgba(123, 220, 255, .25);
+  background: rgba(123, 220, 255, .06);
+  transition: all .2s ease;
+}
+.chest-tab--on {
+  color: #06101c;
+  background: linear-gradient(180deg, #8ff3df, #43d9b8);
+  border-color: rgba(95, 240, 208, .9);
+  box-shadow: 0 0 18rpx rgba(95, 240, 208, .5);
+}
+
+/* 区块小字说明 */
+.chest-sec-tip {
+  position: relative;
+  font-size: 18rpx;
+  color: #6fa4b8;
+  text-align: center;
+  margin-bottom: 20rpx;
+  letter-spacing: 1rpx;
+}
+
+/* 数字藏品网格 */
+.chest-grid {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  justify-content: center;
+}
+.chest-card {
+  width: 30%;
+  min-width: 30%;
+  box-sizing: border-box;
+  background: rgba(123, 220, 255, .05);
+  border: 2rpx solid rgba(95, 240, 208, .3);
+  border-radius: 20rpx;
+  padding: 18rpx 8rpx 14rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform .15s ease, box-shadow .2s ease;
+}
+.chest-card:active { transform: scale(.96); }
+.chest-card--on {
+  border-color: rgba(95, 240, 208, .85);
+  background: linear-gradient(180deg, rgba(95, 240, 208, .16), rgba(95, 240, 208, .04));
+  box-shadow: 0 0 22rpx rgba(95, 240, 208, .35);
+}
+.chest-card--lock { filter: grayscale(.55); opacity: .72; }
+.chest-card-icon  { font-size: 50rpx; line-height: 1; }
+.chest-card-img {
+  width: 96rpx;
+  height: 96rpx;
+  display: block;
+  border-radius: 50%;
+  box-shadow: 0 0 18rpx rgba(95, 240, 208, .5);
+}
+.chest-card-name  { font-size: 20rpx; color: #eafffb; margin-top: 10rpx; }
+.chest-card-state {
+  font-size: 16rpx;
+  color: #6ff0d0;
+  margin-top: 8rpx;
+  font-weight: 700;
+}
+.chest-card-state--off { color: #6f9bb0; font-weight: 400; }
+
+/* 优惠券列表 */
+.chest-coupon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  box-sizing: border-box;
+  margin-bottom: 16rpx;
+  padding: 20rpx 22rpx;
+  background: linear-gradient(100deg, rgba(123, 220, 255, .1), rgba(95, 240, 208, .05));
+  border: 2rpx dashed rgba(95, 240, 208, .5);
+  border-radius: 18rpx;
+}
+.chest-coupon-info { flex: 1; min-width: 0; }
+.chest-coupon-name { font-size: 26rpx; font-weight: 700; color: #eafffb; }
+.chest-coupon-mer  { font-size: 18rpx; color: #7fbfd6; margin-top: 4rpx; }
+.chest-coupon-desc { font-size: 18rpx; color: #9fc6d6; margin-top: 6rpx; }
+.chest-coupon-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8rpx; }
+.chest-coupon-cost { font-size: 22rpx; color: #ffd27d; font-weight: 700; }
+.chest-coupon-code {
+  font-size: 18rpx;
+  color: #06101c;
+  font-weight: 700;
+  background: linear-gradient(180deg, #8ff3df, #43d9b8);
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  letter-spacing: 1rpx;
+}
+
+/* 兑换 / 点亮按钮（数字藏品与优惠券共用） */
+.chest-card-btn {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #06101c;
+  background: linear-gradient(180deg, #8ff3df, #43d9b8);
+  padding: 8rpx 22rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 0 14rpx rgba(95, 240, 208, .4);
+}
+.chest-card-btn--off { background: rgba(255, 255, 255, .12); color: #6f9bb0; box-shadow: none; }
+
+/* 免责声明（页面小字，规避审核风险） */
+.chest-disclaimer {
+  position: relative;
+  margin: 22rpx 8rpx 4rpx;
+  font-size: 18rpx;
+  line-height: 1.5;
+  color: #5f8294;
+  text-align: center;
+}
+.chest-close {
+  position: relative;
+  margin: 22rpx auto 0;
+  width: 60%;
+  text-align: center;
+  font-size: 26rpx;
+  color: #cfeefb;
+  background: rgba(123, 220, 255, .1);
+  border: 2rpx solid rgba(123, 220, 255, .3);
+  padding: 14rpx 0;
+  border-radius: 999rpx;
+}
+
+/* ===== v13.2 数字藏品放大弹窗 ===== */
+.badge-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: rgba(3, 8, 16, .72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.badge-pop {
+  position: relative;
+  width: 78%;
+  max-width: 560rpx;
+  box-sizing: border-box;
+  padding: 44rpx 36rpx 34rpx;
+  text-align: center;
+  background:
+    radial-gradient(80% 50% at 50% 0%, rgba(95, 240, 208, .18), transparent 60%),
+    linear-gradient(180deg, #0b1c2b, #06101c);
+  border: 2rpx solid rgba(95, 240, 208, .6);
+  border-radius: 30rpx;
+  box-shadow: 0 0 60rpx rgba(95, 240, 208, .35);
+  animation: badgePop .3s cubic-bezier(.2, .9, .3, 1.2);
+}
+@keyframes badgePop {
+  from { transform: scale(.8); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.badge-pop-glow {
+  width: 280rpx;
+  height: 280rpx;
+  margin: 0 auto 26rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(95, 240, 208, .25), rgba(95, 240, 208, .02) 70%);
+  box-shadow: 0 0 50rpx rgba(95, 240, 208, .5), inset 0 0 30rpx rgba(123, 220, 255, .3);
+  animation: badgeGlow 2.4s ease-in-out infinite;
+}
+@keyframes badgeGlow {
+  0%, 100% { box-shadow: 0 0 40rpx rgba(95, 240, 208, .4), inset 0 0 24rpx rgba(123, 220, 255, .25); }
+  50%      { box-shadow: 0 0 66rpx rgba(95, 240, 208, .7), inset 0 0 40rpx rgba(123, 220, 255, .45); }
+}
+.badge-pop-img { width: 200rpx; height: 200rpx; display: block; }
+.badge-pop-emoji { font-size: 150rpx; line-height: 1; }
+.badge-pop-name {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #aef9e8;
+  letter-spacing: 4rpx;
+  text-shadow: 0 0 18rpx rgba(95, 240, 208, .6);
+}
+.badge-pop-state { font-size: 22rpx; color: #6ff0d0; margin-top: 10rpx; }
+.badge-pop-story {
+  font-size: 22rpx;
+  color: #cfeefb;
+  line-height: 1.6;
+  margin-top: 18rpx;
+  padding: 0 10rpx;
+}
+.badge-pop-tag {
+  display: inline-block;
+  margin-top: 22rpx;
+  font-size: 18rpx;
+  color: #06101c;
+  font-weight: 700;
+  background: linear-gradient(180deg, #8ff3df, #43d9b8);
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+}
+.badge-pop-close {
+  margin: 26rpx auto 0;
+  width: 56%;
+  text-align: center;
+  font-size: 26rpx;
+  color: #cfeefb;
+  background: rgba(123, 220, 255, .1);
+  border: 2rpx solid rgba(123, 220, 255, .3);
+  padding: 14rpx 0;
+  border-radius: 999rpx;
+}

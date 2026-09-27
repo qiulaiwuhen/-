@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>坏情绪回收站 v2 · 预览 (Bad Mood Recycle Bin)</title>
+<style>
+  /* ===== 全局 ===== */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #1d2330 0%, #0a0c10 100%);
+    color: #cfd3d8;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .layout {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    padding: 24px;
+  }
+
+  /* ===== 调试面板 ===== */
+  .debug {
+    width: 380px;
+    max-height: 760px;
+    background: rgba(20, 24, 32, .85);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 18px;
+    padding: 22px 22px 16px;
+    overflow-y: auto;
+    backdrop-filter: blur(8px);
+    color: #c0c6cf;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .debug h3 { margin: 0 0 10px; font-size: 14px; color: #e8d5b8; letter-spacing: 1px; }
+  .debug h4 { margin: 16px 0 6px; font-size: 13px; color: #b3a684; letter-spacing: .5px; }
+  .debug code { background: rgba(255, 255, 255, .06); padding: 1px 6px; border-radius: 4px; font-size: 12px; color: #f0d9a6; }
+  .debug ol { margin: 6px 0 8px 18px; padding: 0; }
+  .debug li { margin: 2px 0; }
+  .debug .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, .05);
+  }
+  .debug .row:last-child { border-bottom: none; }
+  .debug .lbl { color: #8a92a0; }
+  .debug .val { color: #e8d5b8; font-weight: 600; }
+  .debug .val.ok { color: #7fd4a6; }
+  .debug .val.warn { color: #e8b070; }
+  .debug .btn {
+    display: inline-block;
+    padding: 6px 12px;
+    margin: 4px 4px 8px 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .1);
+    color: #cfd3d8;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .debug .btn:hover { background: rgba(255, 205, 130, .15); border-color: rgba(255, 205, 130, .3); }
+  .debug textarea {
+    width: 100%;
+    height: 56px;
+    margin-top: 6px;
+    background: rgba(0, 0, 0, .35);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: #e8e6e0;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+  }
+  .small { font-size: 11px; color: #6b665c; }
+
+  /* ===== 手机框 ===== */
+  .phone {
+    position: relative;
+    width: 390px;
+    height: 780px;
+    border-radius: 46px;
+    background: #0e0f12;
+    box-shadow:
+      0 30px 80px rgba(0, 0, 0, .6),
+      inset 0 0 0 2px #1a1c20,
+      inset 0 0 0 6px #0a0b0d;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 26px;
+    background: #000;
+    border-radius: 0 0 18px 18px;
+    z-index: 200;
+  }
+  .phone-screen {
+    position: absolute;
+    inset: 8px;
+    border-radius: 40px;
+    overflow: hidden;
+    background: #0e0f12;
+  }
+
+  /* ===== 主场景 ===== */
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #0c0805;
+    /* 黄昏氛围兜底：顶部天空橘红辉光 → 中部让位给图 → 底部泥土/暗夜渐变 */
+    background-image:
+      radial-gradient(ellipse 110% 38% at 50% 0%, rgba(255, 145, 75, .22) 0%, rgba(255, 120, 60, 0) 70%),
+      linear-gradient(180deg,
+        rgba(46, 26, 14, .7) 0%,
+        rgba(28, 16, 10, .55) 18%,
+        rgba(18, 12, 8, 0)   34%,
+        rgba(0, 0, 0, 0)     68%,
+        rgba(10, 6, 4, .65)  88%,
+        rgba(6, 4, 2, .92)   100%);
+    transform: translateZ(0);
+  }
+
+  /* 静态背景图：缩小居中偏下，不再 cover 撑满 */
+  .bg-full {
+    position: absolute;
+    left: 50%;
+    bottom: 18%;
+    width: 88%;
+    display: block;
+    z-index: 1;
+    filter: brightness(.97) contrast(1.05) saturate(1.02);
+    backface-visibility: hidden;
+    pointer-events: none;
+  }
+  .scene--busy .bg-full      { animation: idleBob 2.8s ease-in-out infinite; }
+  .scene--attentive .bg-full { animation: none; }
+  .scene--sucking .bg-full   { animation: suckStage .9s ease-in-out; }
+  .scene--shaking .bg-full   { animation: shakeStage .4s ease-in-out 2; }
+
+  @keyframes idleBob {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50%      { transform: translateX(-50%) translateY(3px); }
+  }
+  @keyframes suckStage {
+    0%, 100% { transform: translateX(-50%) scale(1); }
+    35%      { transform: translateX(-50%) scale(1.02, .985); }
+    60%      { transform: translateX(-50%) scale(1.01, 1.005); }
+  }
+  @keyframes shakeStage {
+    0%, 100% { transform: translateX(-50%) translateX(0); }
+    25%      { transform: translateX(-50%) translateX(-5px) rotate(-.4deg); }
+    75%      { transform: translateX(-50%) translateX(5px) rotate(.4deg); }
+  }
+
+  /* 暗角 + 顶部叠暖色（不再压暗天空） */
+  .overlay-warm {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: radial-gradient(ellipse 70% 50% at 50% 55%, transparent 38%, rgba(0, 0, 0, .42) 100%);
+    pointer-events: none;
+  }
+  .overlay-vignette {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: linear-gradient(180deg, rgba(0, 0, 0, .28) 0%, rgba(0, 0, 0, 0) 16%, rgba(0, 0, 0, 0) 80%, rgba(0, 0, 0, .35) 100%);
+    pointer-events: none;
+  }
+
+  /* 水印遮盖（图中右下角） */
+  .mark-cover {
+    position: absolute;
+    right: 11%;
+    top: 73%;
+    width: 14%;
+    height: 6.5%;
+    z-index: 3;
+    background: radial-gradient(ellipse at 60% 45%, rgba(20, 14, 10, .9) 0%, rgba(20, 14, 10, .55) 45%, transparent 78%);
+    pointer-events: none;
+  }
+
+  /* 头顶指示灯（机器人在屏 y≈44%~71%，头顶约屏 44%） */
+  .robot-lamp {
+    position: absolute;
+    left: 50%;
+    top: 43%;
+    width: 14px;
+    height: 14px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: #2b2f35;
+    border: 2px solid #17191d;
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, .8);
+    transition: background .3s, box-shadow .3s;
+    pointer-events: none;
+    z-index: 6;
+  }
+  .scene--attentive .robot-lamp {
+    background: radial-gradient(circle at 40% 35%, #fff3d8 0%, #ffcf7d 55%, #d99a3f 100%);
+    animation: lampPulse 1.1s ease-in-out infinite;
+  }
+  @keyframes lampPulse {
+    0%, 100% { box-shadow: 0 0 10px 4px rgba(255, 200, 110, .55); }
+    50%      { box-shadow: 0 0 22px 9px rgba(255, 200, 110, .8); }
+  }
+
+  .robot-glow {
+    position: absolute;
+    left: 50%;
+    top: 37%;
+    width: 280px;
+    height: 280px;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(255, 205, 130, .32) 0%, transparent 68%);
+    opacity: 0;
+    transition: opacity .4s ease;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .scene--attentive .robot-glow {
+    opacity: 1;
+    animation: glowPulse2 1.3s ease-in-out infinite;
+  }
+  @keyframes glowPulse2 {
+    0%, 100% { opacity: .55; }
+    50%      { opacity: .9; }
+  }
+
+  /* 黑色方块（从屏下方飞到机器人胸口） */
+  .suck-block {
+    position: absolute;
+    left: 50%;
+    top: 58%;
+    width: 28px;
+    height: 28px;
+    margin-left: -14px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #2a2e34 0%, #0d0f12 70%);
+    box-shadow: 0 0 10px rgba(0, 0, 0, .8), inset 0 0 5px rgba(255, 255, 255, .08);
+    opacity: 0;
+    z-index: 7;
+    pointer-events: none;
+  }
+  .suck-block--on { animation: suckFly .9s cubic-bezier(.35, .1, .35, 1) forwards; }
+  @keyframes suckFly {
+    0%   { opacity: 0; transform: translate(0, 90px) scale(.7) rotate(0deg); }
+    22%  { opacity: 1; }
+    70%  { opacity: 1; transform: translate(0, -60px) scale(.5) rotate(180deg); }
+    100% { opacity: 0; transform: translate(0, -90px) scale(.12); }
+  }
+
+  /* +10 能量值（机器人胸口偏上） */
+  .float-energy {
+    position: absolute;
+    left: 50%;
+    top: 52%;
+    transform: translateX(-50%);
+    padding: 6px 18px;
+    border-radius: 18px;
+    background: rgba(24, 20, 14, .85);
+    border: 1.5px solid rgba(255, 205, 130, .5);
+    color: #ffd9a0;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    opacity: 0;
+    z-index: 8;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .float-energy--on { animation: floatUp 1.25s ease-out forwards; }
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(15px); }
+    20%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-50px); }
+  }
+
+  /* 裂缝 + 嫩芽 缩小后的位置（屏底部 ~24% ~ 46%） */
+  .crack-area {
+    position: absolute;
+    left: 42%;
+    bottom: 24%;
+    width: 80px;
+    height: 110px;
+    z-index: 4;
+  }
+  .crack {
+    position: absolute;
+    background: #161616;
+    border-radius: 2px;
+    opacity: .95;
+  }
+  .ck1 {
+    left: 35%;
+    bottom: 0;
+    width: 4px;
+    height: 70px;
+    transform: rotate(10deg);
+    box-shadow: 1px 0 0 rgba(0, 0, 0, .55);
+  }
+  .ck1::before {
+    content: '';
+    position: absolute;
+    top: 32px;
+    left: 4px;
+    width: 32px;
+    height: 3px;
+    background: #161616;
+    border-radius: 2px;
+  }
+  .ck2 {
+    left: 56%;
+    bottom: 36px;
+    width: 3px;
+    height: 48px;
+    transform: rotate(-12deg);
+  }
+  .ck3 {
+    left: 25%;
+    bottom: 50px;
+    width: 3px;
+    height: 32px;
+    transform: rotate(-30deg);
+  }
+
+  .sprout-scale {
+    position: absolute;
+    left: 30%;
+    bottom: 14px;
+    width: 50px;
+    height: 100px;
+    transform-origin: 50% 100%;
+    transition: transform 1.2s cubic-bezier(.25, .8, .3, 1);
+    z-index: 5;
+  }
+  .sprout-hidden { opacity: 0; }
+  .stage-0 { transform: scale(0); }
+  .stage-1 { transform: scale(.55); }
+  .stage-2 { transform: scale(.72); }
+  .stage-3 { transform: scale(.88); }
+  .stage-4 { transform: scale(1.04); }
+  .stage-5 { transform: scale(1.18); }
+
+  .sprout {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transform-origin: 50% 100%;
+    backface-visibility: hidden;
+  }
+  .sprout--grow {
+    opacity: 1;
+    animation: sproutGrow 1.9s cubic-bezier(.18, .7, .22, 1) .15s both;
+  }
+  @keyframes sproutGrow {
+    0%   { transform: scaleY(0); }
+    100% { transform: scaleY(1); }
+  }
+  .sprout-glow {
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    width: 76px;
+    height: 76px;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(168, 205, 140, .55) 0%, transparent 66%);
+    animation: glowPulse 2.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes glowPulse {
+    0%, 100% { opacity: .35; transform: translateX(-50%) scale(.9); }
+    50%      { opacity: .85; transform: translateX(-50%) scale(1.12); }
+  }
+  .sprout-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: scale(1.3);
+    transform-origin: 50% 46%;
+    border-radius: 8px;
+    object-fit: cover;
+    backface-visibility: hidden;
+  }
+
+  /* 嫩芽情绪变体 */
+  .sprout--tired .sprout-img {
+    filter: grayscale(.8) sepia(.25) hue-rotate(180deg) saturate(.55);
+  }
+  .sprout--sad .sprout-img {
+    filter: saturate(.85) hue-rotate(-12deg) brightness(1.02);
+  }
+  .sprout--angry .sprout-img {
+    filter: sepia(.55) hue-rotate(-28deg) saturate(1.25) brightness(.95);
+  }
+  .dew {
+    display: none;
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #eaf4ff 0%, #a8c6e8 60%, #7fa3cc 100%);
+    box-shadow: 0 0 4px rgba(190, 220, 255, .6);
+    animation: dewDrip 2.4s ease-in infinite;
+    z-index: 2;
+  }
+  .sprout--sad .dew { display: block; }
+  .sprout--sad .w1 { left: 26%; top: 34%; }
+  .sprout--sad .w2 { right: 20%; top: 56%; animation-delay: 1.1s; }
+  @keyframes dewDrip {
+    0%   { opacity: 0; transform: translateY(-4px); }
+    25%  { opacity: .95; }
+    70%  { opacity: .9; transform: translateY(3px); }
+    100% { opacity: 0; transform: translateY(8px); }
+  }
+  .curl {
+    display: none;
+    position: absolute;
+    width: 14px;
+    height: 18px;
+    border-radius: 80% 0 60% 20%;
+    background: #6d2f29;
+    opacity: .9;
+    z-index: 2;
+  }
+  .sprout--angry .curl { display: block; }
+  .sprout--angry .c1 { left: 22%; top: 24%; transform: rotate(16deg); }
+  .sprout--angry .c2 { right: 18%; top: 44%; transform: rotate(-24deg); }
+
+  /* 草地（占屏底部 0%~16%） */
+  .ground-grass {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 16%;
+    opacity: 0;
+    z-index: 4;
+    background:
+      radial-gradient(ellipse 55% 60% at 22% 82%, rgba(126, 152, 100, .7) 0%, transparent 62%),
+      radial-gradient(ellipse 70% 60% at 50% 90%, rgba(112, 138, 88, .5) 0%, transparent 68%),
+      linear-gradient(180deg, rgba(104, 130, 82, .2) 0%, rgba(94, 118, 74, .55) 100%);
+    transition: opacity 1.6s ease;
+    pointer-events: none;
+  }
+  .grass-0 { opacity: 0; }
+  .grass-1 { opacity: .25; }
+  .grass-2 { opacity: .45; }
+  .grass-3 { opacity: .62; }
+  .grass-4 { opacity: .8; }
+  .grass-5 { opacity: 1; }
+
+  .tuft {
+    position: absolute;
+    width: 4px;
+    height: 14px;
+    background: #86a06a;
+    border-radius: 2px 2px 0 0;
+    opacity: 0;
+    transition: opacity 1.4s ease;
+  }
+  .t1 { left: 18%; bottom: 28%; transform: rotate(12deg); }
+  .t2 { left: 30%; bottom: 48%; transform: rotate(-10deg); }
+  .t3 { left: 42%; bottom: 32%; transform: rotate(8deg); }
+  .t4 { left: 54%; bottom: 52%; transform: rotate(-14deg); }
+  .t5 { left: 66%; bottom: 38%; transform: rotate(10deg); }
+  .t6 { left: 78%; bottom: 22%; transform: rotate(-6deg); }
+  .grass-2 .t1, .grass-2 .t3 { opacity: .7; }
+  .grass-3 .t1, .grass-3 .t2, .grass-3 .t3, .grass-3 .t4 { opacity: .85; }
+  .grass-4 .tuft { opacity: .9; }
+  .grass-5 .tuft { opacity: 1; }
+
+  /* 机器人交互热区（机器人在屏 y≈44%~71%，热区贴齐这范围） */
+  .robot-zone {
+    position: absolute;
+    left: 26%;
+    top: 44%;
+    width: 48%;
+    height: 30%;
+    z-index: 10;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  /* 点击提示 */
+  .tap-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 12%;
+    transform: translateX(-50%);
+    color: rgba(240, 228, 205, .92);
+    font-size: 12px;
+    letter-spacing: 3px;
+    padding: 8px 22px;
+    border-radius: 22px;
+    background: rgba(24, 20, 14, .65);
+    border: 1.5px solid rgba(255, 205, 130, .35);
+    white-space: nowrap;
+    animation: hintPulse 2.2s ease-in-out infinite;
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+  }
+  @keyframes hintPulse {
+    0%, 100% { opacity: .6; transform: translateX(-50%) translateY(0); }
+    50%      { opacity: 1;  transform: translateX(-50%) translateY(-4px); }
+  }
+
+  /* 顶部 / 底部文案 */
+  .top-copy {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding-top: 28px;
+    text-align: center;
+    z-index: 20;
+    pointer-events: none;
+  }
+  .top-copy-en {
+    font-size: 14px;
+    letter-spacing: 8px;
+    color: #e8dcc2;
+    font-weight: 600;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, .7);
+  }
+  .top-copy-zh {
+    margin-top: 4px;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: #b3a684;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, .7);
+  }
+  .bottom-copy {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding-bottom: 14px;
+    text-align: center;
+    font-size: 11px;
+    color: #b6ab97;
+    letter-spacing: 3px;
+    z-index: 20;
+    cursor: pointer;
+    user-select: none;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, .8);
+  }
+
+  /* ===== 引导弹窗（机器人讲解口吻） ===== */
+  .guide-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 10, 13, .78);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 20px;
+    animation: maskIn .3s ease both;
+  }
+  @keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+  .guide-card {
+    width: 320px;
+    max-width: 100%;
+    padding: 24px 20px 18px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, #2c2a25 0%, #1d1b17 100%);
+    border: 2px solid rgba(205, 175, 130, .3);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .65);
+    text-align: center;
+    animation: cardIn .42s cubic-bezier(.2, .9, .3, 1.25) both;
+  }
+  @keyframes cardIn {
+    0%   { transform: scale(.88) translateY(20px); opacity: 0; }
+    100% { transform: scale(1)   translateY(0);     opacity: 1; }
+  }
+  .guide-robot {
+    position: relative;
+    width: 70px;
+    height: 70px;
+    margin: 0 auto 16px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #8a744f 0%, #5d4c34 100%);
+    border: 3px solid #2e241c;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .35), inset 0 -3px 6px rgba(0, 0, 0, .3);
+  }
+  .guide-robot-eye {
+    position: absolute;
+    left: 50%;
+    top: 22px;
+    width: 32px;
+    height: 32px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 42% 38%, #ffe6b8 0%, #f5b45e 60%, #b9772f 100%);
+    box-shadow: 0 0 14px 5px rgba(255, 190, 100, .55);
+    animation: eyeBlink 3s ease-in-out infinite;
+  }
+  @keyframes eyeBlink {
+    0%, 90%, 100% { transform: translateX(-50%) scaleY(1); }
+    93%, 97%      { transform: translateX(-50%) scaleY(.1); }
+  }
+  .guide-robot-lamp {
+    position: absolute;
+    left: 50%;
+    top: -7px;
+    width: 12px;
+    height: 12px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: #7fd4a6;
+    box-shadow: 0 0 8px 3px rgba(127, 212, 166, .8);
+    animation: lampBlink 1.4s ease-in-out infinite;
+  }
+  @keyframes lampBlink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .55; }
+  }
+
+  .guide-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #e8d5b8;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .guide-sub {
+    font-size: 13px;
+    color: #b3a684;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+  }
+  .guide-list { text-align: left; margin-bottom: 22px; }
+  .guide-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .guide-num {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    line-height: 28px;
+    border-radius: 50%;
+    background: rgba(255, 205, 130, .12);
+    border: 2px solid rgba(255, 205, 130, .35);
+    color: #ffd9a0;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    margin-right: 12px;
+  }
+  .guide-item:first-child .guide-num {
+    background: rgba(127, 212, 166, .15);
+    border-color: rgba(127, 212, 166, .5);
+    color: #7fd4a6;
+  }
+  .guide-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 3px;
+  }
+  .guide-h {
+    font-size: 14px;
+    color: #e8dcc2;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+  .guide-d {
+    margin-top: 3px;
+    font-size: 11px;
+    color: #8a8170;
+    letter-spacing: 1px;
+  }
+
+  .guide-btn {
+    width: 100%;
+    height: 46px;
+    line-height: 46px;
+    border-radius: 23px;
+    background: linear-gradient(135deg, #e3b87f 0%, #c99a5f 100%);
+    color: #2a2016;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    border: none;
+    cursor: pointer;
+    transition: transform .15s, opacity .2s;
+  }
+  .guide-btn:active { transform: scale(.97); opacity: .9; }
+
+  /* ===== 交互面板 ===== */
+  .panel-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(6, 8, 11, .6);
+    z-index: 60;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .3s ease, visibility .3s;
+  }
+  .panel-mask--show { opacity: 1; visibility: visible; }
+  .panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 18px 24px 28px;
+    border-radius: 28px 28px 0 0;
+    background: linear-gradient(180deg, #2a2b2c 0%, #1f2021 100%);
+    border-top: 2px solid rgba(205, 175, 130, .22);
+    box-shadow: 0 -16px 50px rgba(0, 0, 0, .5);
+    transform: translateY(100%);
+    transition: transform .38s cubic-bezier(.22, .9, .3, 1);
+  }
+  .panel-mask--show .panel { transform: translateY(0); }
+
+  .panel-handle {
+    width: 56px; height: 6px;
+    margin: 0 auto 18px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .14);
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .panel-robot {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #8a744f 0%, #5d4c34 100%);
+    border: 2px solid #2e241c;
+    flex-shrink: 0;
+  }
+  .panel-robot-eye {
+    position: absolute;
+    left: 50%;
+    top: 14px;
+    width: 22px;
+    height: 22px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 42% 38%, #ffe6b8 0%, #f5b45e 60%, #b9772f 100%);
+    box-shadow: 0 0 8px 2px rgba(255, 190, 100, .45);
+  }
+  .panel-q {
+    margin-left: 14px;
+    font-size: 15px;
+    color: #e2c9a6;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+  .panel-input-wrap {
+    background: #17181a;
+    border-radius: 14px;
+    border: 2px solid rgba(255, 255, 255, .06);
+    padding: 4px 16px;
+    margin-bottom: 14px;
+  }
+  .panel-input {
+    width: 100%;
+    height: 52px;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    color: #e8e6e0;
+    font-family: inherit;
+  }
+  .panel-input::placeholder { color: #6b665c; }
+
+  .voice-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 52px;
+    border-radius: 26px;
+    background: #17181a;
+    border: 2px solid rgba(255, 255, 255, .08);
+    margin-bottom: 14px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform .15s;
+  }
+  .voice-btn:active { transform: scale(.985); }
+  .voice-btn--rec {
+    background: rgba(90, 120, 100, .28);
+    border-color: rgba(140, 200, 160, .45);
+    animation: recPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes recPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(120, 200, 160, .25); }
+    50%      { box-shadow: 0 0 0 12px rgba(120, 200, 160, 0); }
+  }
+  .mic {
+    position: relative;
+    width: 14px;
+    height: 18px;
+    border-radius: 6px;
+    background: #8b939e;
+    margin-right: 10px;
+  }
+  .mic::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 20px;
+    width: 12px;
+    height: 6px;
+    transform: translateX(-50%);
+    background: #8b939e;
+    border-radius: 0 0 6px 6px;
+  }
+  .mic--rec { background: #7fd4a6; }
+  .voice-text { font-size: 13px; color: #b4aca0; }
+
+  .confirm-btn {
+    display: block;
+    width: 100%;
+    height: 54px;
+    line-height: 54px;
+    border-radius: 27px;
+    background: linear-gradient(135deg, #e3b87f 0%, #c99a5f 100%);
+    color: #2a2016;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    border: none;
+    cursor: pointer;
+    transition: opacity .2s, transform .15s;
+  }
+  .confirm-btn:active { transform: scale(.985); opacity: .9; }
+  .confirm-btn--empty { opacity: .45; pointer-events: none; }
+
+  /* 奖励 */
+  .reward-mask {
+    position: absolute;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity .3s ease, visibility .3s;
+  }
+  .reward-mask--show { visibility: visible; opacity: 1; }
+  .reward-card {
+    width: 75%;
+    padding: 30px 24px 24px;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #2e2c27 0%, #22211e 100%);
+    border: 2px solid rgba(205, 175, 130, .28);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+    text-align: center;
+    transform: scale(.8);
+    transition: transform .35s cubic-bezier(.2, .9, .3, 1.25);
+  }
+  .reward-mask--show .reward-card { transform: scale(1); }
+  .reward-icon { font-size: 40px; color: #e8c891; margin-bottom: 14px; line-height: 1; }
+  .reward-title { font-size: 18px; font-weight: 700; color: #e8d5b8; letter-spacing: 2px; margin-bottom: 6px; }
+  .reward-desc { font-size: 13px; color: #9d968a; line-height: 1.6; }
+  .reward-tip { margin-top: 16px; font-size: 12px; color: #7fd4a6; }
+
+  /* toast */
+  .toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 10px 20px;
+    background: rgba(0, 0, 0, .8);
+    color: #ffd9a0;
+    border-radius: 10px;
+    font-size: 13px;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 880px) {
+    .layout { flex-direction: column; gap: 12px; padding: 12px; }
+    .debug { width: calc(100vw - 24px); max-height: 200px; order: 2; }
+    .phone { width: min(92vw, 390px); height: calc(min(92vw, 390px) * 2); order: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ============ 调试面板 (左) ============ -->
+  <aside class="debug">
+    <h3>🛠 调试面板 · v2</h3>
+    <div class="row"><span class="lbl">robotState</span><span class="val" id="dbg-state">busy</span></div>
+    <div class="row"><span class="lbl">recycleCount</span><span class="val" id="dbg-count">0</span></div>
+    <div class="row"><span class="lbl">energy</span><span class="val" id="dbg-energy">0</span></div>
+    <div class="row"><span class="lbl">sproutStage</span><span class="val" id="dbg-stage">0 (未长出)</span></div>
+    <div class="row"><span class="lbl">grassLevel</span><span class="val" id="dbg-grass">0</span></div>
+    <div class="row"><span class="lbl">moodType</span><span class="val" id="dbg-mood">-</span></div>
+    <div class="row"><span class="lbl">guide_shown_v1</span><span class="val" id="dbg-shown">-</span></div>
+
+    <h4>快捷输入（按情绪）</h4>
+    <button class="btn" data-txt="今天加班到 11 点, 真的好累">疲惫 💤</button>
+    <button class="btn" data-txt="被冤枉了, 委屈得想哭">委屈 💧</button>
+    <button class="btn" data-txt="跟人吵了一架, 气死了">愤怒 🔥</button>
+    <button class="btn" data-txt="心里有点闷, 但说不上来">普通 ☁</button>
+
+    <h4>核验清单</h4>
+    <ol>
+      <li>① 首次弹引导, 重载不弹 <span id="check-1" class="val">—</span></li>
+      <li>② 首次进场景无嫩芽, 回收后才长 <span id="check-2" class="val ok">✓</span></li>
+      <li>③ 只点击机器人才弹输入面板 <span id="check-3" class="val ok">✓</span></li>
+      <li>④ 嫩芽长大/草地/奖励/三种情绪 <span id="check-4" class="val">—</span></li>
+    </ol>
+
+    <h4>工具</h4>
+    <button class="btn" id="btn-reset-guide">重置首次引导</button>
+    <button class="btn" id="btn-reset-all">清空全部状态</button>
+    <textarea id="last-input" placeholder="最近一次输入"></textarea>
+    <p class="small">长按底部 "坏情绪回收站 · 微信小程序演示版" 也可重置</p>
+  </aside>
+
+  <!-- ============ 手机框 (右) ============ -->
+  <div class="phone">
+    <div class="phone-screen">
+      <div class="scene scene--busy" id="scene">
+
+        <!-- 氛围叠加层 -->
+        <div class="overlay-warm"></div>
+        <div class="overlay-vignette"></div>
+
+        <!-- 全屏静态背景：机器人参考图（布满整个界面） -->
+        <img class="bg-full" src="images/robot.png" alt="robot" draggable="false" />
+
+        <!-- 水印遮盖 -->
+        <div class="mark-cover"></div>
+
+        <!-- 机器人头顶指示灯 + 暖光晕 -->
+        <div class="robot-lamp"></div>
+        <div class="robot-glow"></div>
+
+        <!-- 黑色方块（坏情绪化形） -->
+        <div class="suck-block" id="suckBlock"></div>
+        <!-- +10 能量值 -->
+        <div class="float-energy" id="floatEnergy">+10 能量值</div>
+
+        <!-- 裂缝 + 嫩芽（机器人脚下） -->
+        <div class="crack-area">
+          <div class="crack ck1"></div>
+          <div class="crack ck2"></div>
+          <div class="crack ck3"></div>
+          <div class="sprout-scale stage-0 sprout-hidden" id="sproutScale">
+            <div class="sprout sprout--normal" id="sprout">
+              <div class="sprout-glow"></div>
+              <img class="sprout-img" src="images/sprout.png" alt="sprout" draggable="false" />
+              <div class="dew w1"></div>
+              <div class="dew w2"></div>
+              <div class="curl c1"></div>
+              <div class="curl c2"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 草地（随回收蔓延） -->
+        <div class="ground-grass grass-0" id="grass">
+          <div class="tuft t1"></div>
+          <div class="tuft t2"></div>
+          <div class="tuft t3"></div>
+          <div class="tuft t4"></div>
+          <div class="tuft t5"></div>
+          <div class="tuft t6"></div>
+        </div>
+
+        <!-- 机器人交互热区 -->
+        <div class="robot-zone" id="robotZone">
+          <div class="tap-hint" id="tapHint">点击机器人 · 投递坏情绪</div>
+        </div>
+
+        <!-- 顶部 / 底部 轻量文案 -->
+        <div class="top-copy">
+          <div class="top-copy-en">LIGHT UP YOUR MOOD</div>
+          <div class="top-copy-zh">点亮情绪 · 点亮心情</div>
+        </div>
+        <div class="bottom-copy" id="bottomCopy">坏情绪回收站 · 微信小程序演示版</div>
+
+        <!-- 引导弹窗（机器人讲解口吻） -->
+        <div class="guide-mask" id="guideMask" style="display:none;">
+          <div class="guide-card">
+            <div class="guide-robot">
+              <div class="guide-robot-lamp"></div>
+              <div class="guide-robot-eye"></div>
+            </div>
+            <div class="guide-title">我是回收机器人 ♻</div>
+            <div class="guide-sub">让我陪你把坏心情慢慢变成小苗</div>
+            <div class="guide-list">
+              <div class="guide-item">
+                <div class="guide-num">1</div>
+                <div class="guide-text">
+                  <span class="guide-h">点一点我</span>
+                  <span class="guide-d">把坏心情投递给我</span>
+                </div>
+              </div>
+              <div class="guide-item">
+                <div class="guide-num">2</div>
+                <div class="guide-text">
+                  <span class="guide-h">它会被我吞下</span>
+                  <span class="guide-d">化作土壤的养分</span>
+                </div>
+              </div>
+              <div class="guide-item">
+                <div class="guide-num">3</div>
+                <div class="guide-text">
+                  <span class="guide-h">裂缝里长出小苗</span>
+                  <span class="guide-d">每一次, 都是治愈</span>
+                </div>
+              </div>
+            </div>
+            <button class="guide-btn" id="guideBtn">好, 我准备好了</button>
+          </div>
+        </div>
+
+        <!-- 交互面板 -->
+        <div class="panel-mask" id="panelMask">
+          <div class="panel" id="panel">
+            <div class="panel-handle"></div>
+            <div class="panel-head">
+              <div class="panel-robot"><div class="panel-robot-eye"></div></div>
+              <div class="panel-q">"你有什么东西要回收吗？"</div>
+            </div>
+            <div class="panel-input-wrap">
+              <input class="panel-input" id="panelInput" placeholder="写下或说出你的坏心情……" maxlength="80" />
+            </div>
+            <div class="voice-btn" id="voiceBtn">
+              <div class="mic" id="micIcon"></div>
+              <span class="voice-text" id="voiceText">按住说话 (演示)</span>
+            </div>
+            <button class="confirm-btn confirm-btn--empty" id="confirmBtn">确认回收</button>
+          </div>
+        </div>
+
+        <!-- 奖励 -->
+        <div class="reward-mask" id="rewardMask">
+          <div class="reward-card">
+            <div class="reward-icon" id="rewardIcon">✦</div>
+            <div class="reward-title" id="rewardTitle">积分 +50</div>
+            <div class="reward-desc" id="rewardDesc"></div>
+            <div class="reward-tip">嫩芽又长大了一点</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 与小程序源码 /pages/index/index.js 完全一致的常量 + 状态机
+// ============================================================
+
+const GUIDE_KEY = 'bmb_guide_shown_v1';
+
+const MOOD_RULES = [
+  {
+    type: 'tired',
+    words: ['累', '疲惫', '困', '乏', '没力气', '没劲', '加班', '熬夜', '虚脱', '透支', '不想动', '精疲力尽', '好累', '累死', '疲惫不堪']
+  },
+  {
+    type: 'sad',
+    words: ['委屈', '难过', '伤心', '哭', '想哭', '心酸', '难受', '抑郁', '失落', '想家', '眼泪', '哽咽', '憋屈', '被冤枉', '不被理解']
+  },
+  {
+    type: 'angry',
+    words: ['生气', '愤怒', '气死', '火大', '暴躁', '烦', '讨厌', '恨', '抓狂', '恼火', '憋火', '不爽', '炸', '烦躁', '烦死', '暴怒']
+  }
+];
+
+const REWARD_POOL = [
+  { icon: '✦', title: '积分 +50',                desc: '回收站积分 · 已存入情绪账本' },
+  { icon: '❀', title: '徽章 · 小小治愈师',       desc: '第一次勇敢投递, 值得一朵小花' },
+  { icon: '♡', title: '温暖短句',                desc: '"今天也辛苦了, 你已经做得很好了。"' },
+  { icon: '☁', title: '温暖短句',                desc: '"坏情绪不是你的错, 它只是路过。"' },
+  { icon: '✦', title: '积分 +100',               desc: '回收站积分 · 已存入情绪账本' },
+  { icon: '❀', title: '模拟权益 · 暖心补给券',   desc: '(演示) 下次低落时, 兑换一次深呼吸' }
+];
+
+const VOICE_SAMPLES = [
+  '今天开会开了好久, 好累……',
+  '有点委屈, 感觉自己不被理解。',
+  '刚跟人吵架了, 气得不行。',
+  '加班到很晚, 精疲力尽。',
+  '想到一些事, 心里闷闷的难受。'
+];
+
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  scene:        $('scene'),
+  sproutScale:  $('sproutScale'),
+  sprout:       $('sprout'),
+  grass:        $('grass'),
+  tapHint:      $('tapHint'),
+  floatEnergy:  $('floatEnergy'),
+  suckBlock:    $('suckBlock'),
+  rewardMask:   $('rewardMask'),
+  rewardIcon:   $('rewardIcon'),
+  rewardTitle:  $('rewardTitle'),
+  rewardDesc:   $('rewardDesc'),
+  panelMask:    $('panelMask'),
+  panelInput:   $('panelInput'),
+  confirmBtn:   $('confirmBtn'),
+  voiceBtn:     $('voiceBtn'),
+  micIcon:      $('micIcon'),
+  voiceText:    $('voiceText'),
+  guideMask:    $('guideMask'),
+  guideBtn:     $('guideBtn'),
+  bottomCopy:   $('bottomCopy'),
+  toast:        $('toast'),
+  dbgState:     $('dbg-state'),
+  dbgCount:     $('dbg-count'),
+  dbgEnergy:    $('dbg-energy'),
+  dbgStage:     $('dbg-stage'),
+  dbgGrass:     $('dbg-grass'),
+  dbgMood:      $('dbg-mood'),
+  dbgShown:     $('dbg-shown'),
+  check1:       $('check-1'),
+  check4:       $('check-4'),
+  lastInput:    $('last-input'),
+};
+
+let state = {
+  robotState: 'busy',
+  panelVisible: false,
+  submitting: false,
+  recording: false,
+  inputText: '',
+  energy: 0,
+  recycleCount: 0,
+  sproutStage: 0,
+  grassLevel: 0,
+  moodType: 'normal',
+};
+
+function syncDebug() {
+  els.dbgState.textContent  = state.robotState;
+  els.dbgCount.textContent  = String(state.recycleCount);
+  els.dbgEnergy.textContent = String(state.energy);
+  els.dbgStage.textContent  = state.sproutStage ? `${state.sproutStage} (已长出)` : '0 (未长出)';
+  els.dbgGrass.textContent  = String(state.grassLevel);
+  els.dbgMood.textContent   = state.moodType;
+  els.dbgShown.textContent  = (localStorage.getItem(GUIDE_KEY) === 'true') ? 'true' : 'false';
+  els.check1.textContent = localStorage.getItem(GUIDE_KEY) === 'true' ? '✓ (已记录)' : '✗ (请刷新测试)';
+  els.check1.className    = 'val ' + (localStorage.getItem(GUIDE_KEY) === 'true' ? 'ok' : 'warn');
+  els.check4.textContent = state.recycleCount > 0 ? '✓ (已验证)' : '— (未投递)';
+  els.check4.className   = 'val ' + (state.recycleCount > 0 ? 'ok' : '');
+}
+
+function render() {
+  els.scene.className = 'scene scene--' + state.robotState;
+  els.sproutScale.className = `sprout-scale stage-${state.sproutStage} ${state.sproutStage > 0 ? '' : 'sprout-hidden'}`;
+  els.sprout.className = `sprout sprout--${state.moodType}`;
+  els.grass.className = `ground-grass grass-${state.grassLevel}`;
+  els.panelMask.className = state.panelVisible ? 'panel-mask panel-mask--show' : 'panel-mask';
+  els.tapHint.style.display = (state.robotState === 'busy' && !state.panelVisible) ? 'block' : 'none';
+  els.panelInput.value = state.inputText;
+  els.confirmBtn.className = state.inputText.trim()
+    ? 'confirm-btn'
+    : 'confirm-btn confirm-btn--empty';
+  els.voiceBtn.className = state.recording ? 'voice-btn voice-btn--rec' : 'voice-btn';
+  els.micIcon.className  = state.recording ? 'mic mic--rec' : 'mic';
+  els.voiceText.textContent = state.recording ? '正在倾听……' : '按住说话 (演示)';
+
+  syncDebug();
+}
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+function toast(msg, ms = 1600) {
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  setTimeout(() => els.toast.classList.remove('show'), ms);
+}
+
+function detectMood(text) {
+  for (let i = 0; i < MOOD_RULES.length; i++) {
+    const rule = MOOD_RULES[i];
+    for (let j = 0; j < rule.words.length; j++) {
+      if (text.indexOf(rule.words[j]) > -1) return rule.type;
+    }
+  }
+  return 'normal';
+}
+
+function showReward() {
+  const reward = REWARD_POOL[Math.floor(Math.random() * REWARD_POOL.length)];
+  els.rewardIcon.textContent  = reward.icon;
+  els.rewardTitle.textContent = reward.title;
+  els.rewardDesc.textContent  = reward.desc;
+  els.rewardMask.className    = 'reward-mask reward-mask--show';
+  setTimeout(() => {
+    els.rewardMask.className = 'reward-mask';
+  }, 2600);
+}
+
+function showGuideIfNeeded() {
+  const shown = localStorage.getItem(GUIDE_KEY);
+  els.guideMask.style.display = (shown === 'true') ? 'none' : 'flex';
+}
+function onGuideClose() {
+  localStorage.setItem(GUIDE_KEY, 'true');
+  els.guideMask.style.display = 'none';
+  render();
+}
+
+function onTapRobot() {
+  if (els.guideMask.style.display !== 'none') return;
+  if (state.panelVisible || state.submitting) return;
+  if (state.robotState !== 'busy') return;
+  state.robotState = 'attentive';
+  state.panelVisible = true;
+  render();
+}
+function onClosePanel() {
+  if (state.submitting) return;
+  state.panelVisible = false;
+  render();
+  setTimeout(() => {
+    if (!state.panelVisible && !state.submitting) {
+      state.robotState = 'busy';
+      render();
+    }
+  }, 340);
+}
+
+function onInput(e) {
+  state.inputText = e.target.value;
+  render();
+}
+
+function onVoiceStart() {
+  if (state.submitting) return;
+  state.recording = true;
+  render();
+  if (window._voiceTimer) clearTimeout(window._voiceTimer);
+  window._voiceTimer = setTimeout(() => {
+    if (state.recording) finishVoice();
+  }, 6000);
+}
+function onVoiceEnd() {
+  if (state.recording) finishVoice();
+}
+function finishVoice() {
+  if (window._voiceTimer) {
+    clearTimeout(window._voiceTimer);
+    window._voiceTimer = null;
+  }
+  state.recording = false;
+  render();
+  const sample = VOICE_SAMPLES[Math.floor(Math.random() * VOICE_SAMPLES.length)];
+  setTimeout(() => {
+    state.inputText = sample;
+    render();
+    toast('语音识别完成 (演示)');
+  }, 700);
+}
+
+async function onSubmit() {
+  const text = (state.inputText || '').trim();
+  if (state.submitting) return;
+  if (!text) { toast('先写下或说出你的坏心情哦'); return; }
+  els.lastInput.value = text;
+
+  const moodType = detectMood(text);
+  state.submitting = true;
+  state.panelVisible = false;
+  state.inputText = '';
+  render();
+
+  state.robotState = 'sucking';
+  els.suckBlock.classList.remove('suck-block--on');
+  void els.suckBlock.offsetWidth;
+  els.suckBlock.classList.add('suck-block--on');
+  await sleep(920);
+
+  els.suckBlock.classList.remove('suck-block--on');
+  state.robotState = 'shaking';
+  els.floatEnergy.classList.remove('float-energy--on');
+  void els.floatEnergy.offsetWidth;
+  els.floatEnergy.classList.add('float-energy--on');
+
+  state.recycleCount++;
+  state.energy += 10;
+  await sleep(1250);
+  els.floatEnergy.classList.remove('float-energy--on');
+
+  if (state.recycleCount === 1) {
+    state.sproutStage = 1;
+    state.moodType = moodType;
+    els.sprout.classList.remove('sprout--grow');
+    void els.sprout.offsetWidth;
+    els.sprout.classList.add('sprout--grow');
+  } else {
+    state.sproutStage = Math.min(5, state.recycleCount);
+    state.grassLevel  = Math.min(5, state.recycleCount - 1);
+    state.moodType = moodType;
+  }
+
+  render();
+
+  showReward();
+
+  await sleep(350);
+  state.submitting = false;
+  state.robotState = 'busy';
+  render();
+}
+
+// 事件
+els.guideBtn.addEventListener('click', onGuideClose);
+$('robotZone').addEventListener('click', onTapRobot);
+els.panelMask.addEventListener('click', onClosePanel);
+els.panel.addEventListener('click', (e) => e.stopPropagation());
+els.panelInput.addEventListener('input', onInput);
+els.confirmBtn.addEventListener('click', onSubmit);
+els.voiceBtn.addEventListener('mousedown', onVoiceStart);
+els.voiceBtn.addEventListener('mouseup', onVoiceEnd);
+els.voiceBtn.addEventListener('mouseleave', onVoiceEnd);
+els.voiceBtn.addEventListener('touchstart', (e) => { e.preventDefault(); onVoiceStart(); }, { passive: false });
+els.voiceBtn.addEventListener('touchend',   (e) => { e.preventDefault(); onVoiceEnd();   }, { passive: false });
+els.voiceBtn.addEventListener('touchcancel',(e) => { e.preventDefault(); onVoiceEnd();   }, { passive: false });
+
+document.querySelectorAll('.debug .btn[data-txt]').forEach(b => {
+  b.addEventListener('click', () => {
+    if (els.guideMask.style.display !== 'none') { toast('请先关掉引导'); return; }
+    if (!state.panelVisible) {
+      state.robotState = 'attentive';
+      state.panelVisible = true;
+    }
+    state.inputText = b.dataset.txt;
+    render();
+  });
+});
+
+$('btn-reset-guide').addEventListener('click', () => {
+  localStorage.removeItem(GUIDE_KEY);
+  els.guideMask.style.display = 'flex';
+  toast('已重置首次引导');
+});
+$('btn-reset-all').addEventListener('click', () => {
+  localStorage.removeItem(GUIDE_KEY);
+  state = {
+    robotState: 'busy', panelVisible: false, submitting: false,
+    recording: false, inputText: '', energy: 0, recycleCount: 0,
+    sproutStage: 0, grassLevel: 0, moodType: 'normal',
+  };
+  els.sprout.classList.remove('sprout--grow');
+  els.guideMask.style.display = 'flex';
+  toast('已清空全部状态');
+  render();
+});
+
+let pressTimer;
+els.bottomCopy.addEventListener('mousedown', () => {
+  pressTimer = setTimeout(() => {
+    localStorage.removeItem(GUIDE_KEY);
+    els.guideMask.style.display = 'flex';
+    toast('已重置首次引导 (长按)');
+  }, 600);
+});
+els.bottomCopy.addEventListener('mouseup', () => clearTimeout(pressTimer));
+els.bottomCopy.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+showGuideIfNeeded();
+render();
+</script>
+</body>
+</html>

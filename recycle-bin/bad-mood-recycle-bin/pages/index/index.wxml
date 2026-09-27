@@ -1,0 +1,256 @@
+<!-- 坏情绪回收站 · v20 主场景（单页全屏 · 暗色科幻）
+     严格交互时序（背景全程静止，禁止背景抖动）：
+     ① 页面加载：机器人图1「待机微笑」从屏幕下方浮入屏幕中心，停住等待点击
+     ② 点击机器人：切换图2「认真倾听」，弹出情绪输入框
+     ③ 提交回收：保留图2，仅机器人本体播放抖动动画，背景不动
+     ④ 抖动结束：切换图3「比心」，播放飘散能量气泡特效，触发礼物藏品掉落
+     机器人全程固定在屏幕中心（.robot-stage 不位移），只有立绘切换 + 本体动画 -->
+<view class="scene scene--{{robotState}} intro--{{enterPhase}} {{introActive ? 'scene--intro' : ''}}">
+
+  <!-- ===== 全屏静态背景：黄昏垃圾场 (aspectFill 铺满) ===== -->
+  <image class="bg-full" src="/images/bg_scrap.jpg" mode="aspectFill"></image>
+
+  <!-- ===== 氛围叠加层（暖色 + 暗角 + 暗角底部加强） ===== -->
+  <view class="overlay-warm"></view>
+  <view class="overlay-vignette"></view>
+
+  <!-- ===== 水印遮盖（背景图右下角自带的"AI生成 WORKBUDDY"水印） ===== -->
+  <view class="mark-cover"></view>
+
+  <!-- ===== 主角：透明背景的回收机器人 =====
+       v20：机器人全程固定在屏幕中心（left:50%, bottom:28vh, width:54vw），不再位移。
+       仅通过切换 src 立绘（idle/listen/heart）+ 本体动画表现四段时序，背景保持静止。 -->
+  <view class="robot-stage">
+    <image
+      class="robot-character robot-pose--{{robotPose}}"
+      src="{{robotImage}}"
+      mode="widthFix"
+    ></image>
+
+    <!-- ===== 挠头动作 (从机器人右下角滑到头顶) ===== -->
+    <view class="greet-hand {{patActive ? 'greet-hand--on' : ''}}">✋</view>
+
+    <!-- ===== 眨眼动作（闪光特效，3 颗星错开） ===== -->
+    <view class="greet-sparkles">
+      <view class="greet-sparkle s1 {{blinkActive ? 'greet-sparkle--on' : ''}}">✦</view>
+      <view class="greet-sparkle s2 {{blinkActive ? 'greet-sparkle--on' : ''}}">✦</view>
+      <view class="greet-sparkle s3 {{blinkActive ? 'greet-sparkle--on' : ''}}">✦</view>
+    </view>
+
+    <!-- 头顶指示灯（点击机器人后亮起） -->
+    <view class="robot-lamp"></view>
+    <!-- 头顶暖光晕 -->
+    <view class="robot-glow"></view>
+
+    <!-- v13 询问气泡：机器人到中央做完正面挠头后冒出，提示用户输入 -->
+    <view class="ask-bubble {{askVisible ? 'ask-bubble--show' : ''}}" wx:if="{{askVisible}}">
+      <view class="ask-text">今天有什么要回收的吗？</view>
+      <view class="ask-tail"></view>
+    </view>
+
+    <!-- v20.1 开机悬浮提示气泡：移到机器人头顶上方（.robot-stage 内 bottom:104%），
+         向下小尾巴指向机器人，明确"引导点击"意图，不再遮挡机器人本体 -->
+    <view class="tap-hint" wx:if="{{!introActive && robotState === 'idle' && !panelVisible && !submitting && !askVisible}}">
+      点击 Nova，回收 emo
+      <view class="tap-hint-tail"></view>
+    </view>
+
+    <!-- 脚下基座阴影（透明机器人没有投影，加个软阴影让它"落地"） -->
+    <view class="robot-shadow"></view>
+
+    <!-- 黑色方块（坏情绪化形）吸收动画 -->
+    <view class="suck-block {{suckAnim ? 'suck-block--on' : ''}}"></view>
+    <!-- +20 情绪养分 -->
+    <view class="float-energy {{floatEnergy ? 'float-energy--on' : ''}}">+20 情绪养分</view>
+
+    <!-- v13 回收成功：机器人头顶大字气泡反馈（大字号、高对比，停留约 3 秒） -->
+    <view class="reward-bubble" wx:if="{{rewardVisible}}">
+      <view class="reward-bubble-icon">{{reward.icon}}</view>
+      <view class="reward-bubble-title">{{reward.title}}</view>
+      <view class="reward-bubble-desc">{{reward.desc}}</view>
+      <view class="reward-bubble-energy">+20 情绪养分已收集</view>
+    </view>
+
+    <!-- v13 回收成功：淡绿粒子从胸口向外飘出 -->
+    <view class="particle-layer" wx:if="{{particles.length}}">
+      <block wx:for="{{particles}}" wx:key="id">
+        <view
+          class="particle"
+          style="--angle: {{item.angle}}deg; animation-delay: {{item.delay}}ms;"
+        ></view>
+      </block>
+    </view>
+
+    <!-- 脚下：底部绿芽/裂缝/草地已按需求移除（v12.9 补丁） -->
+
+    <!-- ============================================================
+         v12.7 礼物掉落层（新增，不修改旧结构）
+         位置：.robot-stage 内、.robot-zone 之前
+         功能：从机器人周边向下飘落小勋章/小彩蛋 + 下落淡出
+         z-index：7（panel-mask z-index 60 / reward-mask z-index 80 都在它上面）
+         触发：JS _dropGift 动态 setData giftItems；动画由 CSS keyframes 控制
+         ============================================================ -->
+    <view class="gift-layer">
+      <block wx:for="{{giftItems}}" wx:key="id">
+        <view
+          class="gift gift--{{item.type}} {{item._fly ? 'gift--collecting' : ''}}"
+          style="left:{{item.x}}%; top:{{item.top}}%; animation-delay:{{item.delay}}ms"
+          catchtap="onCollectGift"
+          data-id="{{item.id}}"
+        >{{item.value}}</view>
+      </block>
+    </view>
+
+    <!-- ===== 机器人交互热区 =====
+         作为 .robot-stage 的最后一个子节点，覆盖在屏幕中心机器人身上。
+         v20：机器人固定在中心，热区也随之固定；仅 idle 态可点击（JS 内防重入）。 -->
+    <view class="robot-zone" bindtap="onTapRobot">
+    </view>
+  </view>
+
+  <!-- ===== v12.9 宝箱 HUD：去掉绿框框，用宝箱图标本身作为入口；角标显示当前能量积分 ===== -->
+  <view class="chest-hud {{chestBounce ? 'chest-hud--bounce' : ''}}" bindtap="onOpenChest">
+    <view class="chest-icon-wrap">
+      <image class="chest-icon-img" src="/images/宝箱.png" mode="aspectFit" />
+      <view class="chest-count">{{collectedEnergy}}</view>
+    </view>
+  </view>
+
+  <!-- ===== v13.2 能量宝箱：数字藏品（永久纪念） + 优惠券（消耗养分） ===== -->
+  <view class="chest-mask" wx:if="{{chestOpen}}" bindtap="onCloseChest">
+    <view class="chest-panel" catchtap="noop">
+      <!-- 顶部标题 + 当前养分 -->
+      <view class="chest-panel-head">
+        <text class="chest-panel-title">能量宝箱</text>
+        <text class="chest-panel-sub">当前养分：{{collectedEnergy}}</text>
+      </view>
+
+      <!-- 切换标签 -->
+      <view class="chest-tabs">
+        <view class="chest-tab {{chestTab === 'badge' ? 'chest-tab--on' : ''}}" data-tab="badge" bindtap="onSwitchTab">数字藏品</view>
+        <view class="chest-tab {{chestTab === 'coupon' ? 'chest-tab--on' : ''}}" data-tab="coupon" bindtap="onSwitchTab">优惠券</view>
+      </view>
+
+      <!-- 数字藏品区：永久收藏徽章，点击放大 -->
+      <view class="chest-sec" wx:if="{{chestTab === 'badge'}}">
+        <view class="chest-sec-tip">永久收藏 · 纯纪念 · 不可交易、不可转让</view>
+        <view class="chest-grid">
+          <view
+            class="chest-card {{item.owned ? 'chest-card--on' : 'chest-card--lock'}}"
+            wx:for="{{badgeItems}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="onTapBadge"
+          >
+            <view class="chest-card-icon">
+              <image wx:if="{{item.img}}" class="chest-card-img" src="{{item.img}}" mode="aspectFit" />
+              <text wx:else>{{item.icon}}</text>
+            </view>
+            <view class="chest-card-name">{{item.name}}</view>
+            <view class="chest-card-state" wx:if="{{item.owned}}">已点亮</view>
+            <view class="chest-card-state chest-card-state--off" wx:else>回收 {{item.need}} 次点亮</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 优惠券区：消耗养分兑换，一次性核销 -->
+      <view class="chest-sec" wx:if="{{chestTab === 'coupon'}}">
+        <view class="chest-sec-tip">消耗养分兑换 · 一次性核销 · 线下商家福利</view>
+        <view class="chest-coupon" wx:for="{{couponItems}}" wx:key="id">
+          <view class="chest-coupon-info">
+            <view class="chest-coupon-name">{{item.name}}</view>
+            <view class="chest-coupon-mer">{{item.merchant}}</view>
+            <view class="chest-coupon-desc">{{item.desc}}</view>
+          </view>
+          <view class="chest-coupon-side">
+            <view class="chest-coupon-cost">{{item.cost}} 养分</view>
+            <view wx:if="{{item.redeemed}}" class="chest-coupon-code">核销码 {{item.code}}</view>
+            <view
+              wx:elif="{{item.canAfford}}"
+              class="chest-card-btn"
+              data-id="{{item.id}}"
+              bindtap="onRedeemCoupon"
+            >兑换</view>
+            <view wx:else class="chest-card-btn chest-card-btn--off">养分不足</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 免责声明（页面小字，规避审核风险） -->
+      <view class="chest-disclaimer">本小程序内数字藏品仅为情绪纪念徽章，不可交易、不可转让，不是区块链数字藏品。</view>
+      <view class="chest-close" bindtap="onCloseChest">关闭</view>
+    </view>
+  </view>
+
+  <!-- ===== v13.2 数字藏品放大弹窗（点击徽章弹出，清晰查看细节） ===== -->
+  <view class="badge-mask" wx:if="{{badgeModal}}" bindtap="onCloseBadge">
+    <view class="badge-pop" catchtap="noop">
+      <view class="badge-pop-glow">
+        <image wx:if="{{badgeModal.img}}" class="badge-pop-img" src="{{badgeModal.img}}" mode="aspectFit" />
+        <text wx:else class="badge-pop-emoji">{{badgeModal.icon}}</text>
+      </view>
+      <view class="badge-pop-name">{{badgeModal.name}}</view>
+      <view class="badge-pop-state">{{badgeModal.owned ? '已点亮 · 永久收藏' : '尚未点亮'}}</view>
+      <view class="badge-pop-story">{{badgeModal.story}}</view>
+      <view class="badge-pop-tag">数字藏品 · 不可交易不可转让</view>
+      <view class="badge-pop-close" bindtap="onCloseBadge">关闭</view>
+    </view>
+  </view>
+
+  <!-- ===== 底部草地已按需求移除（v12.9 补丁） ===== -->
+
+  <!-- ===== 顶部 / 底部 轻量文案（保持不变） ===== -->
+  <view class="top-copy">
+    <view class="top-copy-en">LIGHT UP YOUR MOOD</view>
+    <view class="top-copy-zh">点亮情绪 · 点亮心情</view>
+  </view>
+  <view class="bottom-copy" bindlongpress="onResetGuide">坏情绪回收站 · 微信小程序演示版</view>
+
+  <!-- ===== 首次引导（简洁版,不剧透嫩芽彩蛋） ===== -->
+  <view class="guide-mask" wx:if="{{showGuide}}" catchtouchmove="noop">
+    <view class="guide-card guide-card--simple" catchtap="noop">
+      <view class="guide-robot">
+        <view class="guide-robot-eye"></view>
+        <view class="guide-robot-lamp"></view>
+      </view>
+      <view class="guide-title">欢迎来到 emo 回收站</view>
+      <view class="guide-sub">点击 NOVA，扔掉你的坏心情</view>
+      <button class="guide-btn" hover-class="guide-btn--hover" bindtap="onGuideClose">开始</button>
+    </view>
+  </view>
+
+  <!-- ===== 交互面板（仅点击机器人后弹出） ===== -->
+  <view class="panel-mask {{panelVisible ? 'panel-mask--show' : ''}}" bindtap="onClosePanel" catchtouchmove="noop">
+    <view class="panel" catchtap="noop">
+      <view class="panel-handle"></view>
+      <view class="panel-head">
+        <view class="panel-robot">
+          <view class="panel-robot-eye"></view>
+        </view>
+        <view class="panel-q">把坏心情交给 Nova 就好～</view>
+      </view>
+      <view class="panel-input-wrap">
+        <input
+          class="panel-input"
+          placeholder="写下或说出你的坏心情……"
+          placeholder-class="panel-input-ph"
+          value="{{inputText}}"
+          maxlength="80"
+          bindinput="onInput"
+          confirm-type="done"
+          bindconfirm="onSubmit"
+        />
+      </view>
+      <view
+        class="voice-btn {{recording ? 'voice-btn--rec' : ''}}"
+        bindtouchstart="onVoiceStart"
+        bindtouchend="onVoiceEnd"
+        bindtouchcancel="onVoiceEnd"
+      >
+        <view class="mic {{recording ? 'mic--rec' : ''}}"></view>
+        <text class="voice-text">{{recording ? '正在倾听……' : '按住说话（演示）'}}</text>
+      </view>
+      <button class="confirm-btn {{inputText ? '' : 'confirm-btn--empty'}}" hover-class="confirm-btn--hover" bindtap="onSubmit">确认回收</button>
+    </view>
+  </view>
+</view>

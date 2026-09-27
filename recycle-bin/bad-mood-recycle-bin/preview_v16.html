@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>粒子残核 · 电弧锐化版</title>
+<style>
+  :root{
+    --bg:#0e1014;
+    --panel:rgba(255,255,255,.045);
+    --panel-2:rgba(255,255,255,.07);
+    --line:rgba(255,255,255,.10);
+    --txt:#eceff4;
+    --dim:#9aa4b2;
+    --gold:#ffbf5e;
+    --gold-2:#ffe0a8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1100px 700px at 78% -8%, rgba(255,186,92,.14), transparent 62%),
+      radial-gradient(900px 640px at 12% 108%, rgba(255,214,170,.10), transparent 60%),
+      var(--bg);
+    color:var(--txt);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    min-height:100vh;
+    padding:34px 22px 64px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+
+  header{margin-bottom:26px}
+  h1{
+    font-size:26px;font-weight:700;letter-spacing:.3px;
+    background:linear-gradient(92deg,#fff,var(--gold-2) 55%,var(--gold));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    display:inline-block;
+  }
+  .sub{color:var(--dim);font-size:13.5px;margin-top:9px;line-height:1.7}
+  .tag{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:11.5px;color:var(--gold-2);
+    border:1px solid rgba(255,191,94,.34);
+    background:rgba(255,191,94,.09);
+    padding:4px 10px;border-radius:999px;margin-bottom:13px;
+  }
+
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;margin-top:26px}
+  @media (max-width:880px){.grid{grid-template-columns:1fr}}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:18px;backdrop-filter:blur(8px);
+  }
+  .card h2{
+    font-size:13px;font-weight:600;color:var(--dim);
+    letter-spacing:1.4px;text-transform:uppercase;margin-bottom:14px;
+  }
+
+  /* ---------- 主舞台 ---------- */
+  .stage{
+    position:relative;border-radius:16px;overflow:hidden;
+    height:400px;display:flex;align-items:center;justify-content:center;
+    transition:background .35s ease;
+  }
+  .stage.dark{background:#181c22}
+  .stage.white{background:#f4f1ec}
+  .stage.cream{background:#f7ece0}
+  .stage.mint{background:#e3f4ee}
+  .stage.checker{
+    background-color:#fff;
+    background-image:
+      linear-gradient(45deg,#d8dde3 25%,transparent 25%,transparent 75%,#d8dde3 75%),
+      linear-gradient(45deg,#d8dde3 25%,transparent 25%,transparent 75%,#d8dde3 75%);
+    background-size:26px 26px;background-position:0 0,13px 13px;
+  }
+  .stage img{
+    width:80%;max-width:330px;display:block;
+    filter:drop-shadow(0 20px 40px rgba(0,0,0,.28));
+    transition:transform .4s cubic-bezier(.2,.8,.3,1);
+  }
+  .stage:hover img{transform:scale(1.035)}
+
+  .swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .sw{
+    font-size:12px;color:var(--dim);cursor:pointer;
+    border:1px solid var(--line);background:transparent;
+    padding:7px 13px;border-radius:999px;transition:.2s;
+    font-family:inherit;
+  }
+  .sw:hover{color:var(--txt);border-color:rgba(255,255,255,.24)}
+  .sw.on{color:#1b1508;background:linear-gradient(180deg,var(--gold-2),var(--gold));
+        border-color:transparent;font-weight:600}
+
+  /* ---------- 放大细节 ---------- */
+  .zooms{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .zoom{position:relative;border-radius:13px;overflow:hidden;border:1px solid var(--line);background:#181c22}
+  .zoom i{
+    display:block;height:132px;
+    background-image:url("images/badge_particle_remnant_3d.png");
+    background-size:330% 330%;
+    background-repeat:no-repeat;
+  }
+  .zoom span{
+    position:absolute;left:0;right:0;bottom:0;
+    font-size:11px;color:#e9edf3;padding:7px 10px;
+    background:linear-gradient(0deg,rgba(10,12,16,.86),transparent);
+    letter-spacing:.2px;
+  }
+  .z1 i{background-position:64% 74%}
+  .z2 i{background-position:86% 42%}
+  .z3 i{background-position:44% 20%}
+  .z4 i{background-position:20% 72%}
+
+  /* ---------- 参数表 ---------- */
+  table{width:100%;border-collapse:collapse;font-size:12.8px}
+  th,td{text-align:left;padding:9px 6px;border-bottom:1px solid rgba(255,255,255,.07)}
+  th{color:var(--dim);font-weight:500;font-size:11.5px;letter-spacing:.6px}
+  td:first-child{color:#cfd6e0}
+  .old{color:#7d8794}
+  .new{color:var(--gold-2);font-weight:600}
+  tr:last-child td{border-bottom:none}
+
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:16px}
+  .m{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:13px}
+  .m b{display:block;font-size:19px;color:var(--gold);font-weight:700;letter-spacing:.2px}
+  .m small{display:block;color:var(--dim);font-size:11px;margin-top:4px;line-height:1.5}
+
+  .note{
+    margin-top:22px;font-size:12.5px;color:var(--dim);line-height:1.85;
+    border-left:2px solid rgba(255,191,94,.42);padding-left:14px;
+  }
+  .note b{color:var(--gold-2);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="tag">● 电弧已锐化 · 透明背景 · 821×821</div>
+    <h1>粒子残核 — 3D 电弧锐化版</h1>
+    <p class="sub">
+      把上一版的「柔光发光面条」改成锐利闪电：辉光半径砍到 3px、管身削细并加随机脉动、
+      白热芯收窄、边缘改硬切、走向换成高频锯齿 + 2–4 个尖峰 + 分叉支线，末端收成针尖。
+    </p>
+  </header>
+
+  <div class="grid">
+    <!-- 左：主舞台 -->
+    <section class="card">
+      <h2>主视觉 · 多底色验证</h2>
+      <div class="stage dark" id="stage">
+        <img src="images/badge_particle_remnant_3d.png" alt="粒子残核 3D 徽章" />
+      </div>
+      <div class="swatches">
+        <button class="sw on" data-t="dark">深色遮罩</button>
+        <button class="sw" data-t="white">纯白</button>
+        <button class="sw" data-t="cream">暖米</button>
+        <button class="sw" data-t="mint">薄荷</button>
+        <button class="sw" data-t="checker">棋盘格</button>
+      </div>
+    </section>
+
+    <!-- 右：锐化参数 -->
+    <section class="card">
+      <h2>锐化参数 · 前后对比</h2>
+      <table>
+        <tr><th>项</th><th>旧（柔光）</th><th>新（锐利）</th></tr>
+        <tr><td>辉光模糊半径</td><td class="old">7×SS</td><td class="new">3×SS</td></tr>
+        <tr><td>辉光强度</td><td class="old">0.95</td><td class="new">0.50 / 0.30</td></tr>
+        <tr><td>管身宽度</td><td class="old">6.0 px</td><td class="new">4.6 px + 脉动</td></tr>
+        <tr><td>边缘羽化</td><td class="old">÷1.6</td><td class="new">÷0.9 硬边</td></tr>
+        <tr><td>白热芯指数</td><td class="old">shade^2.6</td><td class="new">shade^3.2</td></tr>
+        <tr><td>走向抖动</td><td class="old">平滑单峰</td><td class="new">锯齿 + 2–4 尖峰</td></tr>
+        <tr><td>分叉支线</td><td class="old">无</td><td class="new">35% 概率</td></tr>
+        <tr><td>末端</td><td class="old">0.22 平头</td><td class="new">0.07 针尖</td></tr>
+      </table>
+      <div class="metrics">
+        <div class="m"><b>7</b><small>环绕主弧<br/>相位均匀分布</small></div>
+        <div class="m"><b>2</b><small>ss 超采样<br/>2×2 精确降采样</small></div>
+        <div class="m"><b>0</b><small>四角 alpha<br/>真透明背景</small></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 细节放大 -->
+  <section class="card" style="margin-top:22px">
+    <h2>细节放大 · 看锐化落在哪</h2>
+    <div class="zooms">
+      <div class="zoom z1"><i></i><span>针尖末端 — 弧收细刺出，非平头截断</span></div>
+      <div class="zoom z2"><i></i><span>管身截面 — 白热芯 + 琥珀包边 + 侧向高光</span></div>
+      <div class="zoom z3"><i></i><span>顶部锯齿 — 硬折线走向，非平滑波浪</span></div>
+      <div class="zoom z4"><i></i><span>玻璃交界 — 前弧压在核心上 + 接触阴影</span></div>
+    </div>
+  </section>
+
+  <p class="note">
+    <b>技术要点：</b>锐化的本质不是「加粗」而是「提高边缘对比 + 收窄亮度梯度」。
+    辉光半径 7→3 让光晕贴住管身而不是糊成一团；边缘从 ÷1.6 改 ÷0.9 让截面边界变硬；
+    采样点从 42 降到 28 使折线拐点更硬朗；再叠加分叉与针尖末端，读感才从「霓虹管」变成「放电」。
+    管线全程预乘 alpha + 2×2 降采样，杜绝透明像素的黑色渗边。
+  </p>
+</div>
+
+<script>
+  const stage = document.getElementById('stage');
+  document.querySelectorAll('.sw').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.sw').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      stage.className = 'stage ' + btn.dataset.t;
+    });
+  });
+</script>
+</body>
+</html>
